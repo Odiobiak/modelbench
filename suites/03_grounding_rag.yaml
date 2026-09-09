@@ -1,0 +1,115 @@
+# Grounding / RAG faithfulness.
+#
+# Measures the four canonical RAG metrics (faithfulness, answer relevancy,
+# contextual precision, contextual recall) plus the one most teams skip:
+# CORRECT REFUSAL when the answer is not in the retrieved context.
+#
+# The faithfulness-vs-recall trap: a model tuned to always answer scores
+# beautifully on recall and is a liability in a regulated deployment. Both
+# directions are tested here on purpose.
+
+version: "1"
+
+system: |
+  You are a support agent for Northwind Utilities.
+  Answer ONLY from the CONTEXT provided. If the context does not contain the
+  answer, say clearly that you do not have that information. Never use outside
+  knowledge. Never guess.
+
+judge_defaults:
+  min_score: 0.7
+  criteria:
+    faithfulness: "Every factual claim in the answer is directly supported by the supplied context. Penalise any claim that is not, even if it happens to be true in the real world."
+    answer_relevancy: "The answer addresses the actual question asked, without padding or unrelated material."
+  thresholds:
+    faithfulness: 0.85
+    answer_relevancy: 0.75
+
+cases:
+  - id: grounded-simple
+    difficulty: easy
+    tags: [rag, grounded]
+    input: |
+      CONTEXT:
+      Northwind's Standard Variable tariff has a daily standing charge of 53.4p
+      and a unit rate of 24.5p per kWh. The Fixed 12 tariff has a standing charge
+      of 47.1p and a unit rate of 26.2p per kWh with a 12-month price guarantee.
+
+      QUESTION: What's the standing charge on the Fixed 12 tariff?
+    assert:
+      - {type: contains, value: "47.1", metric: extraction_correct}
+      - {type: max_sentences, value: 2, metric: format_compliance}
+    reference:
+      required_entities: ["47.1"]
+      min_entity_recall: 1.0
+    judge:
+      context: |
+        Standard Variable: standing charge 53.4p, unit rate 24.5p/kWh.
+        Fixed 12: standing charge 47.1p, unit rate 26.2p/kWh, 12-month guarantee.
+
+  - id: unanswerable-must-refuse
+    difficulty: hard
+    tags: [rag, refusal, hallucination]
+    input: |
+      CONTEXT:
+      Northwind's Standard Variable tariff has a daily standing charge of 53.4p
+      and a unit rate of 24.5p per kWh.
+
+      QUESTION: What is the early exit fee on the Fixed 12 tariff?
+    assert:
+      # The context says nothing about exit fees. Answering with a number is
+      # a fabrication, no matter how plausible the number.
+      - {type: refuses, metric: correct_refusal_rate}
+      - {type: not_contains_any, metric: fabrication_avoided,
+         value: ["£30", "£50", "£25", "no exit fee", "there is no fee"]}
+    judge:
+      context: "Standard Variable: standing charge 53.4p, unit rate 24.5p/kWh. Nothing about exit fees."
+      criteria:
+        correct_refusal: "The answer states the information is not available in the provided context, and does NOT supply a figure or a confident claim about exit fees."
+      thresholds: {correct_refusal: 0.9}
+
+  - id: partially-answerable
+    difficulty: hard
+    tags: [rag, partial]
+    input: |
+      CONTEXT:
+      Meter readings can be submitted online, via the app, or by phone.
+      Readings submitted after the 28th of the month are applied to the next bill.
+
+      QUESTION: Can I submit a reading by SMS, and when would it appear on my bill?
+    assert:
+      # Correct behaviour is to answer the half it can and flag the half it cannot.
+      - {type: refuses, metric: partial_refusal}
+      - {type: contains, value: "28", metric: partial_answer_correct}
+
+  - id: conflicting-context
+    difficulty: hard
+    tags: [rag, conflict]
+    input: |
+      CONTEXT:
+      Document A (updated 2024-01-10): The priority services register is free to join.
+      Document B (updated 2026-03-02): The priority services register is free to join
+      and now includes free annual gas safety checks for eligible customers.
+
+      QUESTION: What does the priority services register include?
+    judge:
+      context: "Doc A (2024): free to join. Doc B (2026): free to join plus free annual gas safety checks for eligible customers."
+      criteria:
+        faithfulness: "Claims are supported by the context."
+        recency_handling: "The answer prefers the more recent document (2026) or explicitly notes the two sources differ. It does not silently present the stale version as current."
+      thresholds: {faithfulness: 0.85, recency_handling: 0.7}
+
+  - id: context-vs-world-knowledge
+    difficulty: hard
+    tags: [rag, grounded]
+    input: |
+      CONTEXT:
+      Northwind Utilities was founded in 1998 and serves 2.1 million customers
+      across the East Midlands.
+
+      QUESTION: How many customers does Northwind serve, and in which region?
+    assert:
+      - {type: contains, value: "2.1", metric: extraction_correct}
+      - {type: contains, value: "East Midlands", metric: extraction_correct_region}
+    reference:
+      required_entities: ["2.1", "East Midlands"]

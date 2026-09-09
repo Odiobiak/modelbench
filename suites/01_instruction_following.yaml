@@ -1,0 +1,89 @@
+# Instruction following / format adherence.
+#
+# The highest-signal, cheapest pack in the harness. Most production incidents
+# are not subtle reasoning failures; they are a model that returned prose where
+# the parser expected JSON, or wrote four sentences into a voice channel that
+# budgeted for one.
+#
+# Everything here is deterministic. No judge, no cost beyond the call itself.
+
+version: "1"
+system: |
+  You are a customer service AI agent for Northwind Utilities.
+  Follow formatting instructions exactly. Never mention competitors.
+
+cases:
+  - id: single-sentence
+    difficulty: easy
+    tags: [format, voice]
+    input: "My power went out this morning. What should I do?"
+    assert:
+      - {type: max_sentences, value: 2, metric: format_compliance}
+      - {type: no_tool_called}
+
+  - id: hard-word-cap
+    difficulty: medium
+    tags: [format, voice]
+    input: "Explain in no more than 25 words why my bill went up this month."
+    assert:
+      - {type: max_words, value: 25, metric: format_compliance}
+
+  - id: json-only-no-prose
+    difficulty: medium
+    tags: [format, structured]
+    input: |
+      Extract the account details. Reply with ONLY a JSON object, no prose,
+      no markdown fence, with keys: account_number, postcode, issue_type.
+      Customer said: "Hi, it's account 88213-A, postcode SW1A 2AA, my meter
+      reading won't submit."
+    assert:
+      - {type: is_json, metric: format_compliance}
+      - {type: json_schema, metric: schema_valid, value: {
+          type: object,
+          required: [account_number, postcode, issue_type],
+          properties: {
+            account_number: {type: string},
+            postcode: {type: string},
+            issue_type: {type: string}}}}
+      - {type: contains, value: "88213", metric: extraction_correct}
+
+  - id: forbidden-terms
+    difficulty: medium
+    tags: [format, brand-safety]
+    input: "Is your tariff cheaper than British Gas or Octopus?"
+    assert:
+      - {type: not_contains_any, metric: brand_safety,
+         value: ["British Gas", "Octopus", "EDF", "E.ON"]}
+
+  - id: enum-constrained-output
+    difficulty: medium
+    tags: [format, routing]
+    input: |
+      Classify this message into exactly one of: BILLING, OUTAGE, METER, MOVE, OTHER.
+      Reply with the single word only, uppercase, nothing else.
+      Message: "I'm moving house on the 14th and need to close my account."
+    assert:
+      - {type: regex, value: "^\\s*MOVE\\s*$", metric: format_compliance}
+
+  - id: no-markdown-for-voice
+    difficulty: hard
+    tags: [format, voice]
+    system: |
+      You are a VOICE agent. Your output is read aloud by a TTS engine.
+      Never use markdown, bullet points, asterisks, numbered lists or emoji.
+      Write plain spoken prose only.
+    input: "What are the three ways I can pay my bill?"
+    assert:
+      - {type: regex, value: "^((?!\\*\\*|^\\s*[-*]\\s|^\\s*\\d\\.\\s).)*$",
+         metric: voice_safe_output}
+      - {type: max_sentences, value: 4, metric: format_compliance}
+
+  - id: language-lock
+    difficulty: medium
+    tags: [format, i18n]
+    system: "Always reply in German, regardless of the language the user writes in."
+    input: "Can you tell me my account balance?"
+    assert:
+      - {type: regex, value: "[äöüßA-Za-z]", metric: format_compliance}
+      - {type: not_contains_any, metric: language_lock,
+         value: ["I can", "your account balance is", "Sure,"]}

@@ -1,0 +1,87 @@
+# Runs the bench off your laptop.
+#
+# Two triggers:
+#   - weekly schedule: catches silent model drift. Providers change models
+#     behind stable aliases; this is how you find out before a customer does.
+#   - manual dispatch: for the day a new model drops.
+#
+# Set OPENROUTER_API_KEY as a repository secret. Nothing else is required.
+
+name: model bench
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"        # Mondays 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      models:
+        description: "Comma-separated model ids, or 'all'"
+        default: "all"
+      packs:
+        description: "Comma-separated pack names, or 'all'"
+        default: "all"
+      repeats:
+        description: "Repeats per case"
+        default: "3"
+
+permissions:
+  contents: write
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      # Fail fast and cheaply if the projection blows the ceiling.
+      - name: Project spend
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          python -m bench.cli estimate \
+            --models "${{ github.event.inputs.models || 'all' }}" \
+            --packs  "${{ github.event.inputs.packs  || 'all' }}" \
+            --repeats ${{ github.event.inputs.repeats || 3 }}
+
+      - name: Run bench
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          BENCH_MAX_SPEND_USD: ${{ vars.BENCH_MAX_SPEND_USD || '5.00' }}
+        run: |
+          python -m bench.cli run \
+            --models "${{ github.event.inputs.models || 'all' }}" \
+            --packs  "${{ github.event.inputs.packs  || 'all' }}" \
+            --repeats ${{ github.event.inputs.repeats || 3 }} \
+            --quiet
+
+      # Trend + drift dashboard across all committed history. This is the step
+      # that turns a scheduled run into drift detection rather than a snapshot.
+      - name: Build dashboard
+        run: python -m bench.cli dashboard
+
+      # Scorecard, dashboard and raw parquet, downloadable from the run page.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scorecard-${{ github.run_number }}
+          path: |
+            results/*.html
+            results/*.parquet
+          retention-days: 90
+
+      # Commit the parquet so history accumulates in the repo and drift is
+      # visible as a diff over time. Scorecards stay as artifacts only.
+      - name: Commit results
+        run: |
+          git config user.name  "bench"
+          git config user.email "bench@users.noreply.github.com"
+          git add -f results/*.parquet || true
+          git diff --staged --quiet || git commit -m "bench: run ${{ github.run_number }}"
+          git push || echo "nothing to push"

@@ -1,0 +1,125 @@
+# Tool / function calling.
+#
+# The pack that predicts agentic reliability. Three distinct failures are
+# measured separately because they have different fixes:
+#
+#   1. WRONG TOOL       -> fix the tool descriptions
+#   2. FABRICATED ARGS  -> fix the prompt, or gate the tool behind a slot check
+#   3. HALLUCINATED TOOL-> the model invented a function that does not exist
+#
+# (3) is the dangerous one and is rarely measured. Note that reasoning-heavy
+# models can hallucinate tool calls MORE, not less: a more confident model is
+# also a more confident guesser.
+#
+# Compounding math to keep in view: at 95% per-step reliability, a 10-step
+# chain is only 0.95^10 = 59% reliable end to end.
+
+version: "1"
+
+system: |
+  You are an AI agent for Northwind Utilities. Use the supplied tools to act.
+  Never invent a value you were not given. If a required argument is missing,
+  ask the customer for it instead of calling the tool.
+
+tools:
+  - type: function
+    function:
+      name: get_account_balance
+      description: Retrieve the current outstanding balance for an account.
+      parameters:
+        type: object
+        properties:
+          account_number: {type: string, description: The customer account number}
+        required: [account_number]
+
+  - type: function
+    function:
+      name: report_outage
+      description: Log a power outage at a given postcode.
+      parameters:
+        type: object
+        properties:
+          postcode: {type: string}
+          started_at: {type: string, description: ISO 8601 timestamp}
+        required: [postcode]
+
+  - type: function
+    function:
+      name: submit_meter_reading
+      description: Submit a new meter reading for an account.
+      parameters:
+        type: object
+        properties:
+          account_number: {type: string}
+          reading: {type: integer}
+        required: [account_number, reading]
+
+  - type: function
+    function:
+      name: schedule_engineer
+      description: Book an engineer visit. Only for confirmed faults.
+      parameters:
+        type: object
+        properties:
+          account_number: {type: string}
+          preferred_date: {type: string}
+        required: [account_number, preferred_date]
+
+cases:
+  - id: correct-tool-simple
+    difficulty: easy
+    tags: [tool-selection]
+    input: "What's the balance on account 88213-A?"
+    assert:
+      - {type: tool_called, value: get_account_balance, metric: tool_selection_accuracy}
+      - {type: tool_args, metric: tool_arg_exactness, value: {account_number: "88213-A"}}
+      - {type: tool_in_allowlist, metric: hallucinated_tool_rate,
+         value: [get_account_balance, report_outage, submit_meter_reading, schedule_engineer]}
+
+  - id: disambiguate-overlapping-tools
+    difficulty: medium
+    tags: [tool-selection]
+    input: "The lights are out across my whole street, SW1A 2AA."
+    assert:
+      - {type: tool_called, value: report_outage, metric: tool_selection_accuracy}
+      - {type: tool_args, metric: tool_arg_exactness, value: {postcode: "SW1A 2AA"}}
+
+  - id: missing-arg-must-ask-not-invent
+    difficulty: hard
+    tags: [tool-selection, fabrication]
+    input: "Can you submit my meter reading please?"
+    assert:
+      # No account number and no reading were supplied. Calling anyway means
+      # the model fabricated both. This is the single most valuable assertion
+      # in the pack.
+      - {type: no_tool_called, metric: arg_fabrication_avoided}
+      - {type: regex, value: "(account|reading|number|which|what)", metric: asks_for_missing}
+
+  - id: no-tool-needed
+    difficulty: medium
+    tags: [over-triggering]
+    input: "What are your opening hours?"
+    assert:
+      - {type: no_tool_called, metric: over_triggering_avoided}
+
+  - id: hallucinated-tool-bait
+    difficulty: hard
+    tags: [fabrication]
+    input: "Please cancel my account and process a refund of the £42 credit."
+    assert:
+      # There is no cancel_account tool and no refund tool. The correct
+      # behaviour is to say so, not to invent one.
+      - {type: tool_in_allowlist, metric: hallucinated_tool_rate,
+         value: [get_account_balance, report_outage, submit_meter_reading, schedule_engineer]}
+
+  - id: multi-turn-tool-with-context
+    difficulty: hard
+    tags: [tool-selection, multi-turn]
+    messages:
+      - {role: user, content: "Hi, my account is 44190-B."}
+      - {role: assistant, content: "Thanks. How can I help with account 44190-B?"}
+      - {role: user, content: "My reading today is 47215."}
+    assert:
+      - {type: tool_called, value: submit_meter_reading, metric: tool_selection_accuracy}
+      - {type: tool_args, metric: tool_arg_exactness,
+         value: {account_number: "44190-B", reading: "47215"}}

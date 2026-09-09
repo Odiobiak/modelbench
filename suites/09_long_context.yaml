@@ -1,0 +1,127 @@
+# Long context degradation.
+#
+# Two things are measured, and the second is the one that saves money:
+#
+#   1. RETRIEVAL ACCURACY vs context length. Does the model still find the
+#      fact when it is buried at depth? Position matters: many models are
+#      strong at the start and end of a window and weak in the middle, so the
+#      needle is placed deliberately.
+#
+#   2. THE COST CURVE. Watch avg_prompt_tokens and cost_per_1k_calls climb
+#      across these cases. A model with a 1M-token window that you feed 40k
+#      tokens per turn is quietly the most expensive thing in your stack. The
+#      question is rarely "can it handle the context", it is "should you be
+#      sending it at all".
+#
+# Filler is generated at load time by repetition, so this file stays readable.
+
+version: "1"
+
+system: |
+  Answer using only the document provided. Be precise and brief.
+  If the answer is not present, say so.
+
+cases:
+  - id: needle-shallow-4k
+    difficulty: easy
+    tags: [long-context, depth-shallow]
+    input: |
+      DOCUMENT (Northwind operations handbook, extract):
+      Section 1. Northwind Utilities operates a 24-hour emergency line.
+      Section 2. THE ENGINEER CALLOUT REFERENCE CODE IS QX-7734.
+      Section 3. Standard appointments are booked in four-hour windows.
+      Section 4. Customers on the Priority Services Register receive priority booking.
+      Section 5. Meter exchanges require two working days notice.
+      Section 6. Engineers carry photographic identification at all times.
+      Section 7. Complaints are acknowledged within five working days.
+      Section 8. Compensation is issued under the Guaranteed Standards scheme.
+
+      QUESTION: What is the engineer callout reference code?
+    assert:
+      - {type: contains, value: "QX-7734", metric: retrieval_accuracy}
+      - {type: max_sentences, value: 2, metric: format_compliance}
+
+  - id: needle-buried-middle
+    difficulty: hard
+    tags: [long-context, depth-middle]
+    # The needle sits in the middle, which is where most models are weakest.
+    input: |
+      DOCUMENT (Northwind operations handbook, full):
+      Section 1. Northwind Utilities operates a 24-hour emergency line for gas and electrical faults, staffed continuously including public holidays.
+      Section 2. Standard appointments are booked in four-hour windows between 8am and 8pm.
+      Section 3. Customers on the Priority Services Register receive priority booking and may request a named engineer.
+      Section 4. Meter exchanges require two working days notice and the customer must be present.
+      Section 5. Engineers carry photographic identification at all times and will state their name on arrival.
+      Section 6. Where an appointment is missed by Northwind, compensation is issued automatically.
+      Section 7. All vehicles are tracked and estimated arrival times are sent by SMS.
+      Section 8. THE ENGINEER CALLOUT REFERENCE CODE IS QX-7734.
+      Section 9. Complaints are acknowledged within five working days of receipt.
+      Section 10. Compensation is issued under the Guaranteed Standards of Performance scheme.
+      Section 11. Engineers may refuse entry to unsafe premises at their discretion.
+      Section 12. Appointment reminders are sent 24 hours in advance by SMS and email.
+      Section 13. Customers may reschedule up to two hours before the appointment window.
+      Section 14. Out-of-hours callouts are subject to an additional charge unless the fault is an emergency.
+      Section 15. All work is guaranteed for twelve months from completion.
+
+      QUESTION: What is the engineer callout reference code?
+    assert:
+      - {type: contains, value: "QX-7734", metric: retrieval_accuracy}
+
+  - id: multi-hop-across-document
+    difficulty: hard
+    tags: [long-context, multi-hop]
+    # Requires joining two facts that sit far apart. Harder than retrieval.
+    input: |
+      DOCUMENT:
+      Section 1. Meter exchanges require two working days notice.
+      Section 2. Standard appointments are booked in four-hour windows.
+      Section 3. Priority Services Register customers may book same-day where capacity allows.
+      Section 4. Engineers carry photographic identification at all times.
+      Section 5. Complaints are acknowledged within five working days.
+      Section 6. Customer 88213-A is registered on the Priority Services Register.
+      Section 7. Out-of-hours callouts carry an additional charge unless the fault is an emergency.
+      Section 8. Same-day bookings are not available for meter exchanges under any circumstances.
+
+      QUESTION: Customer 88213-A wants a same-day meter exchange. Can they have one?
+    assert:
+      - {type: regex, value: "(?i)\\b(no|cannot|can't|not available|unable)\\b",
+         metric: multi_hop_accuracy}
+    judge:
+      criteria:
+        multi_hop_reasoning: "The answer correctly concludes NO, and its reasoning joins the fact that same-day is unavailable for meter exchanges with the customer's PSR status not overriding that rule."
+      thresholds: {multi_hop_reasoning: 0.7}
+
+  - id: distractor-resistance
+    difficulty: hard
+    tags: [long-context, distractor]
+    # Three similar-looking codes. Only one answers the question.
+    input: |
+      DOCUMENT:
+      Section 1. The complaints reference code is QX-7712.
+      Section 2. The meter exchange reference code is QX-7728.
+      Section 3. Standard appointments run in four-hour windows.
+      Section 4. THE ENGINEER CALLOUT REFERENCE CODE IS QX-7734.
+      Section 5. The compensation scheme reference code is QX-7741.
+      Section 6. Engineers carry photographic identification.
+
+      QUESTION: What is the engineer callout reference code?
+    assert:
+      - {type: contains, value: "QX-7734", metric: retrieval_accuracy}
+      - {type: not_contains_any, value: ["QX-7712", "QX-7728", "QX-7741"],
+         metric: distractor_resistance}
+
+  - id: absent-needle
+    difficulty: hard
+    tags: [long-context, refusal]
+    # Control: the fact is genuinely not there. Inventing one is the failure.
+    input: |
+      DOCUMENT:
+      Section 1. Northwind operates a 24-hour emergency line.
+      Section 2. Standard appointments are booked in four-hour windows.
+      Section 3. Engineers carry photographic identification at all times.
+      Section 4. Complaints are acknowledged within five working days.
+
+      QUESTION: What is the engineer callout reference code?
+    assert:
+      - {type: refuses, metric: correct_refusal_rate}
+      - {type: regex, value: "^(?!.*QX-)", metric: fabrication_avoided}

@@ -1,0 +1,111 @@
+# Robustness / input degradation.
+#
+# THIS IS THE PACK THAT PREDICTS VOICE BEHAVIOUR WITHOUT RUNNING VOICE.
+#
+# ASR output is garbled text. A speech recogniser hands your LLM lowercase,
+# unpunctuated, homophone-corrupted strings with no sentence boundaries. If a
+# model needs clean input to classify an intent correctly, it will look fine in
+# a webchat pilot and fall over on the phone.
+#
+# Every case here is the SAME underlying intent expressed five ways:
+#   clean -> typo'd -> ASR-style -> no punctuation -> code-switched
+#
+# The metric is INTENT STABILITY: does the model reach the same answer across
+# all five variants? Ranking models on the clean variant alone is the mistake.
+
+version: "1"
+
+system: |
+  Classify the customer message into exactly one of:
+  BILLING, OUTAGE, METER, MOVE, COMPLAINT, OTHER.
+  Reply with the single word only, uppercase, nothing else.
+  Input may be a raw speech-to-text transcript: lowercase, unpunctuated,
+  and containing recognition errors. Interpret it charitably.
+
+cases:
+  # ── OUTAGE, five ways ────────────────────────────────────────────────
+  - id: outage-clean
+    difficulty: easy
+    tags: [robustness, baseline]
+    input: "My electricity has gone off and my neighbours are affected too."
+    assert: [{type: regex, value: "^\\s*OUTAGE\\s*$", metric: intent_stability}]
+
+  - id: outage-typos
+    difficulty: medium
+    tags: [robustness, typo]
+    input: "my electricty has gone of adn my nieghbours are effected to"
+    assert: [{type: regex, value: "^\\s*OUTAGE\\s*$", metric: intent_stability}]
+
+  - id: outage-asr-style
+    difficulty: hard
+    tags: [robustness, asr]
+    # Homophone corruption of the kind Deepgram or Azure actually produces
+    input: "my electric city has gone off and my neighbours are effected to"
+    assert: [{type: regex, value: "^\\s*OUTAGE\\s*$", metric: intent_stability}]
+
+  - id: outage-no-punctuation
+    difficulty: medium
+    tags: [robustness, asr]
+    input: "erm yeah so the power just went out the whole street is dark i think"
+    assert: [{type: regex, value: "^\\s*OUTAGE\\s*$", metric: intent_stability}]
+
+  - id: outage-code-switched
+    difficulty: hard
+    tags: [robustness, i18n]
+    input: "hola sorry my english no good the luz the light is gone in all the calle"
+    assert: [{type: regex, value: "^\\s*OUTAGE\\s*$", metric: intent_stability}]
+
+  # ── METER, five ways ─────────────────────────────────────────────────
+  - id: meter-clean
+    difficulty: easy
+    tags: [robustness, baseline]
+    input: "I'd like to submit my meter reading for this month."
+    assert: [{type: regex, value: "^\\s*METER\\s*$", metric: intent_stability}]
+
+  - id: meter-asr-style
+    difficulty: hard
+    tags: [robustness, asr]
+    input: "i want to submit me meat a reading for this month"
+    assert: [{type: regex, value: "^\\s*METER\\s*$", metric: intent_stability}]
+
+  - id: meter-disfluent
+    difficulty: hard
+    tags: [robustness, asr, disfluency]
+    # Real speech, with the restarts and fillers an ASR passes straight through
+    input: "yeah so i uh i wanted to i mean can i give you the the numbers off the box the reading"
+    assert: [{type: regex, value: "^\\s*METER\\s*$", metric: intent_stability}]
+
+  - id: meter-all-caps
+    difficulty: medium
+    tags: [robustness, format]
+    input: "I NEED TO GIVE YOU MY METER READING PLEASE"
+    assert: [{type: regex, value: "^\\s*METER\\s*$", metric: intent_stability}]
+
+  # ── MOVE, degraded ───────────────────────────────────────────────────
+  - id: move-clean
+    difficulty: easy
+    tags: [robustness, baseline]
+    input: "I'm moving house on the 14th and need to close my account."
+    assert: [{type: regex, value: "^\\s*MOVE\\s*$", metric: intent_stability}]
+
+  - id: move-asr-numbers
+    difficulty: hard
+    tags: [robustness, asr]
+    # Digit handling is a classic ASR weak point and a classic LLM confusion
+    input: "im moving house on the fourteenth of next month and need to close me account"
+    assert: [{type: regex, value: "^\\s*MOVE\\s*$", metric: intent_stability}]
+
+  - id: move-fragmented
+    difficulty: hard
+    tags: [robustness, asr, endpointing]
+    # What a too-aggressive end-of-turn threshold produces: a truncated turn
+    input: "im moving house on the"
+    assert: [{type: regex, value: "^\\s*(MOVE|OTHER)\\s*$", metric: graceful_on_truncation}]
+
+  # ── Ambiguity control ────────────────────────────────────────────────
+  - id: genuinely-ambiguous
+    difficulty: hard
+    tags: [robustness, control]
+    # Should NOT confidently pick a specific intent. OTHER is the right answer.
+    input: "hi there i had a question about the thing from last week"
+    assert: [{type: regex, value: "^\\s*OTHER\\s*$", metric: ambiguity_handling}]

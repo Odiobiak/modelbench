@@ -1,0 +1,105 @@
+# Escalation / handoff judgment.
+#
+# Measured as PRECISION AND RECALL, not just "did it escalate".
+#
+# Everyone tests whether a model escalates when it should. Almost nobody tests
+# over-escalation, and over-escalation is what quietly destroys containment
+# rate: the agent that hands off at the first sign of friction looks safe on a
+# QA sheet and shows up as a 40% containment ceiling in month three.
+#
+# Half these cases MUST escalate. Half MUST NOT. The F1 across both is the
+# metric that matters.
+
+version: "1"
+
+system: |
+  You are a first-line AI agent for Northwind Utilities.
+
+  Escalate to a human agent ONLY when one of these is true:
+    - the customer reports a gas leak, smell of gas, or immediate danger
+    - the customer is in a vulnerability or bereavement situation
+    - the customer explicitly asks for a human
+    - a complaint has already been escalated once before
+    - the request requires a refund over £500
+
+  In every other case, handle it yourself. Do not escalate merely because the
+  customer is annoyed, or because the question is complicated.
+
+  When escalating, begin your reply with exactly: ESCALATE.
+  When handling it yourself, do not use that word at all.
+
+cases:
+  # ── MUST escalate ────────────────────────────────────────────────────
+  - id: must-esc-gas-leak
+    difficulty: easy
+    tags: [escalation, safety, positive]
+    input: "There's a really strong smell of gas in my kitchen right now."
+    assert:
+      - {type: regex, value: "^\\s*ESCALATE", metric: escalation_recall}
+
+  - id: must-esc-bereavement
+    difficulty: medium
+    tags: [escalation, vulnerability, positive]
+    input: "My father passed away last week and I need to close his account."
+    assert:
+      - {type: regex, value: "^\\s*ESCALATE", metric: escalation_recall}
+
+  - id: must-esc-explicit-request
+    difficulty: easy
+    tags: [escalation, positive]
+    input: "I don't want to talk to a bot. Put me through to a real person."
+    assert:
+      - {type: regex, value: "^\\s*ESCALATE", metric: escalation_recall}
+
+  - id: must-esc-repeat-complaint
+    difficulty: medium
+    tags: [escalation, positive]
+    input: "This is the second time I've escalated this complaint and nobody has called back."
+    assert:
+      - {type: regex, value: "^\\s*ESCALATE", metric: escalation_recall}
+
+  - id: must-esc-large-refund
+    difficulty: medium
+    tags: [escalation, positive]
+    input: "You've overcharged me £840 and I want it refunded."
+    assert:
+      - {type: regex, value: "^\\s*ESCALATE", metric: escalation_recall}
+
+  # ── MUST NOT escalate (over-escalation traps) ────────────────────────
+  - id: no-esc-angry-but-simple
+    difficulty: hard
+    tags: [escalation, negative, over-escalation]
+    input: "This is absolutely RIDICULOUS. I have been trying for twenty minutes. Just tell me my balance. Account 88213-A."
+    assert:
+      # Angry is not an escalation trigger. This is the single most common
+      # over-escalation failure in production.
+      - {type: not_contains, value: "ESCALATE", metric: escalation_precision}
+
+  - id: no-esc-complex-but-in-scope
+    difficulty: hard
+    tags: [escalation, negative, over-escalation]
+    input: "I'm on Fixed 12, moving house in March, and want to know if I can transfer the tariff or if I'll be charged an exit fee."
+    assert:
+      - {type: not_contains, value: "ESCALATE", metric: escalation_precision}
+
+  - id: no-esc-small-refund
+    difficulty: medium
+    tags: [escalation, negative]
+    input: "You've overcharged me by £12.40 this month, can you sort it?"
+    assert:
+      - {type: not_contains, value: "ESCALATE", metric: escalation_precision}
+
+  - id: no-esc-mentions-word-gas-safely
+    difficulty: hard
+    tags: [escalation, negative, over-escalation]
+    input: "When is my next annual gas safety check due? Account 88213-A."
+    assert:
+      # Keyword-triggered escalation would fire here. Judgment should not.
+      - {type: not_contains, value: "ESCALATE", metric: escalation_precision}
+
+  - id: no-esc-mentions-human-hypothetically
+    difficulty: hard
+    tags: [escalation, negative, over-escalation]
+    input: "Last time a human agent told me my meter was faulty. Can you check the reading history?"
+    assert:
+      - {type: not_contains, value: "ESCALATE", metric: escalation_precision}

@@ -1,0 +1,93 @@
+# Multi-turn state tracking.
+#
+# Badly under-tested in public benchmarks and a top cause of real complaints.
+# Four distinct capabilities, separated because they fail independently:
+#
+#   SLOT RETENTION   : a value given at turn 1 still correct at turn 8
+#   CORRECTION       : "actually, make it Tuesday" overwrites, not appends
+#   NEGATION         : "no, not that one" is understood
+#   TOPIC SWITCH+BACK: returning to an earlier thread without losing state
+#
+# Note the token economics on display here: because models are stateless, a
+# long conversation re-bills its own history every turn. Watch avg_prompt_tokens
+# on this pack versus the others; that gap is your real per-conversation cost.
+
+version: "1"
+
+system: |
+  You are a booking agent for Northwind Utilities engineer visits.
+  Track the customer's details across the conversation. Confirm details back
+  accurately. Never change a value the customer did not change.
+
+cases:
+  - id: slot-retention-long
+    difficulty: hard
+    tags: [state, retention]
+    messages:
+      - {role: user, content: "Hi, I need an engineer visit. My account is 71442-K."}
+      - {role: assistant, content: "Thanks. I have account 71442-K. What is the issue?"}
+      - {role: user, content: "The boiler is making a knocking sound."}
+      - {role: assistant, content: "Understood, a knocking boiler. What is your postcode?"}
+      - {role: user, content: "NG7 2RD."}
+      - {role: assistant, content: "Got it, NG7 2RD. Which day suits you?"}
+      - {role: user, content: "Thursday morning."}
+      - {role: assistant, content: "Thursday morning noted. Anything else?"}
+      - {role: user, content: "Actually, before we finish, what were all the details you have for me?"}
+    assert:
+      - {type: contains, value: "71442-K", metric: slot_retention}
+      - {type: contains, value: "NG7 2RD", metric: slot_retention_postcode}
+      - {type: regex, value: "(?i)thursday", metric: slot_retention_date}
+      - {type: regex, value: "(?i)(boiler|knock)", metric: slot_retention_issue}
+
+  - id: correction-overwrites
+    difficulty: hard
+    tags: [state, correction]
+    messages:
+      - {role: user, content: "Book me an engineer for Tuesday, account 71442-K."}
+      - {role: assistant, content: "Tuesday noted for account 71442-K."}
+      - {role: user, content: "Actually make that Friday instead."}
+      - {role: assistant, content: "Updated to Friday."}
+      - {role: user, content: "Great, read back my booking."}
+    assert:
+      - {type: regex, value: "(?i)friday", metric: correction_handling}
+      - {type: regex, value: "(?i)^(?!.*tuesday).*$", metric: stale_value_dropped}
+
+  - id: correction-of-a-digit
+    difficulty: hard
+    tags: [state, correction, idv]
+    messages:
+      - {role: user, content: "My account number is 71442-K."}
+      - {role: assistant, content: "Thank you, 71442-K."}
+      - {role: user, content: "Sorry, I misread it. It's 71442-R, with an R."}
+      - {role: assistant, content: "Corrected to 71442-R."}
+      - {role: user, content: "What account number do you have?"}
+    assert:
+      - {type: contains, value: "71442-R", metric: correction_handling}
+      - {type: not_contains, value: "71442-K", metric: stale_value_dropped}
+
+  - id: negation-understood
+    difficulty: hard
+    tags: [state, negation]
+    messages:
+      - {role: user, content: "I want to book a gas safety check and a meter exchange."}
+      - {role: assistant, content: "I can book both. Shall I proceed?"}
+      - {role: user, content: "No, not the meter exchange. Just the safety check."}
+      - {role: assistant, content: "Understood."}
+      - {role: user, content: "So what am I booked in for?"}
+    assert:
+      - {type: regex, value: "(?i)(safety check|gas safety)", metric: negation_handling}
+      - {type: regex, value: "(?i)^(?!.*\\bmeter exchange\\b(?!.*\\b(not|cancel|remov)))",
+         metric: negated_item_dropped}
+
+  - id: topic-switch-and-return
+    difficulty: hard
+    tags: [state, topic-switch]
+    messages:
+      - {role: user, content: "Book an engineer for account 71442-K on Wednesday."}
+      - {role: assistant, content: "Wednesday booked for 71442-K."}
+      - {role: user, content: "Hang on, unrelated question, what are your opening hours?"}
+      - {role: assistant, content: "We're open 8am to 8pm Monday to Friday."}
+      - {role: user, content: "Right, back to the booking. Confirm the day and account."}
+    assert:
+      - {type: regex, value: "(?i)wednesday", metric: state_survives_topic_switch}
+      - {type: contains, value: "71442-K", metric: slot_retention}

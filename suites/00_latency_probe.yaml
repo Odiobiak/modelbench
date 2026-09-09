@@ -1,0 +1,170 @@
+# Latency probe.
+#
+# Not a quality pack. Every case here is trivially answerable, because the
+# point is to isolate TIME rather than to test capability.
+#
+# Design rules that make the numbers comparable:
+#   - Output is forced SHORT on every case, so TTFT dominates and you are
+#     measuring the model's time-to-respond, not how chatty it is.
+#   - Prompt size is controlled at three tiers (small / medium / large), because
+#     TTFT scales with input length and a single tier hides that.
+#   - No tools, no JSON mode, no judge. Nothing that adds a variable.
+#
+# Run this via `bench latency`, which forces route:direct so the numbers are
+# absolute rather than inflated by a gateway hop. Numbers produced through
+# OpenRouter are valid for RANKING models against each other, since every model
+# pays the same tax, but must never be quoted to a customer as absolute.
+
+version: "1"
+
+system: "Answer in exactly one short sentence. Never explain."
+
+cases:
+  # ── TIER 1: small prompt (~30 tokens) ───────────────────────────────
+  - id: probe-small-1
+    difficulty: easy
+    tags: [latency, tier-small]
+    max_tokens: 32
+    input: "What is the capital of France?"
+    assert: [{type: max_sentences, value: 2, metric: probe_ok}]
+
+  - id: probe-small-2
+    difficulty: easy
+    tags: [latency, tier-small]
+    max_tokens: 32
+    input: "Name one colour of the rainbow."
+    assert: [{type: max_sentences, value: 2, metric: probe_ok}]
+
+  - id: probe-small-3
+    difficulty: easy
+    tags: [latency, tier-small]
+    max_tokens: 32
+    input: "Is water wet? Yes or no."
+    assert: [{type: max_sentences, value: 2, metric: probe_ok}]
+
+  # ── TIER 2: medium prompt (~450 tokens) ─────────────────────────────
+  # Representative of a real voice turn: a system persona plus a few turns
+  # of history plus a retrieved snippet.
+  - id: probe-medium-1
+    difficulty: easy
+    tags: [latency, tier-medium]
+    max_tokens: 32
+    input: |
+      ACCOUNT CONTEXT:
+      Customer 88213-A has been with Northwind Utilities since March 2019. They
+      are on the Standard Variable tariff with a daily standing charge of 53.4p
+      and a unit rate of 24.5p per kWh. Their average monthly consumption is 284
+      kWh. They pay by monthly direct debit of 74.20 on the 3rd of each month.
+      Their last meter reading was submitted on the 12th, showing 47215. The
+      previous reading was 46931. They have no outstanding balance. They are not
+      on the Priority Services Register. They have contacted support twice in the
+      last twelve months, once about a delayed engineer visit and once about a
+      billing query which was resolved. Their preferred contact method is email.
+      Their property is a three-bedroom semi-detached house built in 1968 with
+      gas central heating installed in 2015. The smart meter was installed in
+      November 2021 and reports half-hourly. No faults have been logged against
+      the meter. The account is not in arrears and no payment plan is in place.
+      Their tariff has no exit fee and no end date. They have not opted into
+      marketing communications. The account holder is the sole named party.
+
+      CONVERSATION SO FAR:
+      Customer: Hi there.
+      Agent: Hello, how can I help today?
+      Customer: I just want to check something quickly.
+      Agent: Of course, what would you like to check?
+
+      QUESTION: What is the customer's monthly direct debit amount?
+    assert: [{type: contains, value: "74.20", metric: probe_ok}]
+
+  - id: probe-medium-2
+    difficulty: easy
+    tags: [latency, tier-medium]
+    max_tokens: 32
+    input: |
+      ACCOUNT CONTEXT:
+      Customer 44190-B joined in January 2022 on the Fixed 12 tariff, standing
+      charge 47.1p per day, unit rate 26.2p per kWh, with a twelve month price
+      guarantee ending in January next year. Average monthly consumption is 412
+      kWh across a four-bedroom detached property with electric heating. They pay
+      quarterly on receipt of bill rather than by direct debit. Their last three
+      bills were 312.44, 289.10 and 341.87. They are registered on the Priority
+      Services Register due to a household member requiring medical equipment
+      that depends on continuous supply. Their meter is a legacy single-rate unit
+      installed in 2009 and is scheduled for smart meter exchange. They have
+      requested that all engineer visits be booked in the morning. They have
+      contacted support four times in the past year, three of those relating to
+      the meter exchange scheduling. Their preferred contact method is telephone.
+      There is no outstanding balance and no payment plan in place. The account
+      has two named parties.
+
+      CONVERSATION SO FAR:
+      Customer: Morning.
+      Agent: Good morning, how can I help?
+      Customer: Quick question about my account.
+      Agent: Certainly, go ahead.
+
+      QUESTION: What is this customer's unit rate per kWh?
+    assert: [{type: contains, value: "26.2", metric: probe_ok}]
+
+  # ── TIER 3: large prompt (~2,000 tokens) ────────────────────────────
+  # Representative of a RAG turn carrying several retrieved chunks. This tier
+  # is where TTFT differences between models get large, and where a model with
+  # a huge context window starts costing real money per turn.
+  - id: probe-large-1
+    difficulty: easy
+    tags: [latency, tier-large]
+    max_tokens: 32
+    input: |
+      RETRIEVED DOCUMENTS:
+
+      [DOC 1 - Tariff guide]
+      Northwind Utilities offers three residential tariffs. Standard Variable has
+      a daily standing charge of 53.4p and a unit rate of 24.5p per kWh, with no
+      exit fee and no fixed term. Fixed 12 has a daily standing charge of 47.1p
+      and a unit rate of 26.2p per kWh with a twelve month price guarantee and a
+      30 exit fee per fuel if the customer leaves early. Green Fixed 24 has a
+      daily standing charge of 51.0p and a unit rate of 27.8p per kWh, is backed
+      by renewable generation certificates, runs for twenty four months, and
+      carries a 60 exit fee per fuel. All tariffs are available on both single
+      rate and Economy 7 metering. Economy 7 customers receive a discounted night
+      rate between midnight and seven in the morning. Tariff changes take effect
+      from the next billing cycle and customers are notified in writing at least
+      thirty days before any price change on a variable tariff.
+
+      [DOC 2 - Metering and readings]
+      Meter readings may be submitted online, through the mobile application, or
+      by telephone. Readings submitted after the twenty eighth of the month are
+      applied to the following bill. Smart meters report automatically at half
+      hourly intervals where the customer has consented to that frequency, and
+      daily otherwise. Legacy meters require a manual reading at least once every
+      six months to avoid estimated billing. Where a reading appears implausible
+      the system will flag it for review and the customer will be contacted
+      before the bill is issued. Meter exchanges require two working days notice
+      and the customer must be present for the appointment. Same day bookings are
+      not available for meter exchanges under any circumstances.
+
+      [DOC 3 - Engineer appointments]
+      Standard appointments are booked in four hour windows between eight in the
+      morning and eight in the evening. Customers on the Priority Services
+      Register receive priority booking and may request a named engineer. All
+      engineers carry photographic identification and will state their name on
+      arrival. Estimated arrival times are sent by text message on the morning of
+      the appointment. Where an appointment is missed by Northwind, compensation
+      is issued automatically under the Guaranteed Standards of Performance
+      scheme. Customers may reschedule up to two hours before the start of the
+      appointment window. Out of hours callouts carry an additional charge unless
+      the fault is classified as an emergency. All work is guaranteed for twelve
+      months from the date of completion. The engineer callout reference code is
+      QX-7734.
+
+      [DOC 4 - Complaints and compensation]
+      Complaints are acknowledged within five working days of receipt and a
+      substantive response is issued within eight weeks. Where a complaint cannot
+      be resolved the customer may refer the matter to the Energy Ombudsman.
+      Compensation under the Guaranteed Standards of Performance scheme is issued
+      automatically and does not require the customer to claim. Payments are made
+      as a credit to the account within ten working days. Where the customer has
+      closed their account, payment is made by cheque or bank transfer.
+
+      QUESTION: What is the engineer callout reference code?
+    assert: [{type: contains, value: "QX-7734", metric: probe_ok}]

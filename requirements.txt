@@ -1,0 +1,15 @@
+# The CLI/engine core. No Docker, no database, no service.
+httpx>=0.27.0          # async HTTP + SSE streaming. Streaming is what makes TTFT real.
+pyyaml>=6.0            # config/*.yaml and suites/*.yaml
+pandas>=2.2.0          # aggregation, percentiles, the run frame
+pyarrow>=16.0.0        # parquet engine for pandas (not imported directly)
+jsonschema>=4.22.0     # the json_schema assertion in the deterministic scorer
+python-dotenv>=1.0.1   # loads .env so keys never live in the repo
+boto3>=1.34.0          # route: bedrock only -- AWS SigV4 signing, everything else is plain httpx
+
+# The API layer (api/) -- FastAPI backend + Supabase Postgres for the model
+# registry, settings, and run index. Run results themselves stay in Parquet.
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+sqlalchemy[asyncio]>=2.0.30
+asyncpg>=0.29.0

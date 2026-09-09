@@ -1,0 +1,227 @@
+# ═══════════════════════════════════════════════════════════════════
+#  THE REGISTRY  —  this is the only file you edit to add a model.
+#
+#  Adding a model that dropped this morning:
+#     - id: whatever-you-want-to-call-it
+#       model: vendor/model-slug-on-openrouter
+#
+#  That is it. Two lines. Everything else (vendor, pricing, context
+#  window, tool support, canonical version) is auto-discovered from
+#  the gateway's model catalogue at run time and stamped onto every
+#  result row. You never hand-maintain pricing.
+#
+#  `route: openrouter` is the default and needs no direct vendor key.
+#  Use `route: direct` only when you need first-party or regional.
+# ═══════════════════════════════════════════════════════════════════
+
+defaults:
+  route: openrouter
+  temperature: 0.2          # test at what you deploy at, not 0
+  max_tokens: 1024
+  timeout_s: 120
+
+models:
+
+  # ── fast / cheap tier ────────────────────────────────────────────
+  - id: gpt-4.1-nano
+    model: openai/gpt-4.1-nano
+    tags: [fast, cheap, openai]
+
+  - id: gemini-3-flash
+    model: google/gemini-3-flash
+    tags: [fast, cheap, google]
+
+  - id: claude-haiku-4.5
+    model: anthropic/claude-haiku-4.5
+    tags: [fast, anthropic]
+
+  - id: deepseek-v3
+    model: deepseek/deepseek-chat
+    tags: [fast, cheap, open-weight, deepseek]
+
+  - id: mistral-small
+    model: mistralai/mistral-small-latest
+    tags: [fast, cheap, open-weight, mistral]
+
+  # ── frontier tier (reference ceiling, usually too costly for voice) ──
+  - id: claude-sonnet-4.6
+    model: anthropic/claude-sonnet-4.6
+    tags: [frontier, anthropic]
+    enabled: false           # flip to true when you want the ceiling
+
+  - id: gpt-5.4
+    model: openai/gpt-5.4
+    tags: [frontier, openai]
+    enabled: false
+
+  # ── direct / regional example ────────────────────────────────────
+  # Use this shape when you must measure a specific Azure region,
+  # because OpenRouter will not tell you where it routed you.
+  - id: azure-gpt-4.1-nano-swedencentral
+    model: gpt-4.1-nano
+    route: direct
+    base_url_env: AZURE_OPENAI_BASE
+    api_key_env: AZURE_OPENAI_API_KEY
+    region: swedencentral
+    deployment_type: standard
+    tags: [azure, regional, eu]
+    enabled: false
+
+  # ── your own proxy / self-hosted / Cognigy-facing endpoint ───────
+  - id: custom-endpoint
+    model: your-model-name
+    route: direct
+    base_url_env: CUSTOM_OPENAI_BASE
+    api_key_env: CUSTOM_OPENAI_API_KEY
+    tags: [self-hosted]
+    enabled: false
+
+  # ── Amazon Bedrock example ────────────────────────────────────────
+  # Not OpenAI-compatible at all: AWS SigV4-signed requests (boto3) against
+  # the Converse API, so it needs a region + two credential env vars
+  # instead of one bearer token. aws_session_token_env is optional --
+  # leave unset for a long-lived IAM user, only needed for temporary/
+  # assumed-role credentials. `model` is Bedrock's own model id, dot-
+  # separated (vendor.model-name-version), not a vendor/slug pair.
+  - id: bedrock-claude-3-sonnet
+    model: anthropic.claude-3-sonnet-20240229-v1:0
+    route: bedrock
+    region: us-east-1
+    aws_access_key_id_env: AWS_ACCESS_KEY_ID
+    aws_secret_access_key_env: AWS_SECRET_ACCESS_KEY
+    tags: [bedrock, anthropic]
+    enabled: false
+
+
+  # ── direct: every currently-callable OpenAI chat model (pre-GPT-5 payload shape) ──
+  # GPT-5-generation models (gpt-5*, gpt-6-astra, o-series) need max_completion_tokens
+  # instead of max_tokens; bench/client.py doesn't send that yet, so they 400 here.
+  # They still work fine via the openrouter route above, which normalises this.
+  - id: oai-gpt-3.5-turbo
+    model: gpt-3.5-turbo
+    route: direct
+    base_url_env: OPENAI_BASE
+    api_key_env: OPENAI_API_KEY
+    tags: [direct, openai]
+
+  - id: oai-gpt-4
+    model: gpt-4
+    route: direct
+    base_url_env: OPENAI_BASE
+    api_key_env: OPENAI_API_KEY
+    tags: [direct, openai]
+
+  - id: oai-gpt-4-turbo
+    model: gpt-4-turbo
+    route: direct
+    base_url_env: OPENAI_BASE
+    api_key_env: OPENAI_API_KEY
+    tags: [direct, openai]
+
+  - id: oai-gpt-4.1
+    model: gpt-4.1
+    route: direct
+    base_url_env: OPENAI_BASE
+    api_key_env: OPENAI_API_KEY
+    tags: [direct, openai]
+
+  - id: oai-gpt-4.1-mini
+    model: gpt-4.1-mini
+    route: direct
+    base_url_env: OPENAI_BASE
+    api_key_env: OPENAI_API_KEY
+    tags: [direct, openai]
+
+  - id: oai-gpt-4.1-nano
+    model: gpt-4.1-nano
+    route: direct
+    base_url_env: OPENAI_BASE
+    api_key_env: OPENAI_API_KEY
+    tags: [direct, openai]
+
+  - id: oai-gpt-4o
+    model: gpt-4o
+    route: direct
+    base_url_env: OPENAI_BASE
+    api_key_env: OPENAI_API_KEY
+    tags: [direct, openai]
+
+  - id: oai-gpt-4o-mini
+    model: gpt-4o-mini
+    route: direct
+    base_url_env: OPENAI_BASE
+    api_key_env: OPENAI_API_KEY
+    tags: [direct, openai]
+
+  # ── direct: every currently-callable Gemini chat model ─────────────────
+  # (gemini-2.5-* retired for new users; gemini-3.5-flash[-lite] returning 503
+  # high-demand errors as of this writing -- left out until that clears)
+  - id: gem-gemini-3-flash-preview
+    model: gemini-3-flash-preview
+    route: direct
+    base_url_env: GEMINI_BASE
+    api_key_env: GEMINI_API_KEY
+    tags: [direct, gemini]
+
+  - id: gem-gemini-3.1-flash-lite
+    model: gemini-3.1-flash-lite
+    route: direct
+    base_url_env: GEMINI_BASE
+    api_key_env: GEMINI_API_KEY
+    tags: [direct, gemini]
+
+  - id: gem-gemini-3.1-flash-lite-preview
+    model: gemini-3.1-flash-lite-preview
+    route: direct
+    base_url_env: GEMINI_BASE
+    api_key_env: GEMINI_API_KEY
+    tags: [direct, gemini]
+
+  - id: gem-gemini-3.6-flash
+    model: gemini-3.6-flash
+    route: direct
+    base_url_env: GEMINI_BASE
+    api_key_env: GEMINI_API_KEY
+    tags: [direct, gemini]
+
+  - id: gem-gemini-3.7-flash
+    model: gemini-3.7-flash
+    route: direct
+    base_url_env: GEMINI_BASE
+    api_key_env: GEMINI_API_KEY
+    tags: [direct, gemini]
+
+  - id: gem-gemini-3.8-flash
+    model: gemini-3.8-flash
+    route: direct
+    base_url_env: GEMINI_BASE
+    api_key_env: GEMINI_API_KEY
+    tags: [direct, gemini]
+
+  - id: gem-gemini-flash-latest
+    model: gemini-flash-latest
+    route: direct
+    base_url_env: GEMINI_BASE
+    api_key_env: GEMINI_API_KEY
+    tags: [direct, gemini]
+
+  - id: gem-gemini-flash-lite-latest
+    model: gemini-flash-lite-latest
+    route: direct
+    base_url_env: GEMINI_BASE
+    api_key_env: GEMINI_API_KEY
+    tags: [direct, gemini]
+
+  - id: gem-gemma-4-26b-a4b-it
+    model: gemma-4-26b-a4b-it
+    route: direct
+    base_url_env: GEMINI_BASE
+    api_key_env: GEMINI_API_KEY
+    tags: [direct, gemini]
+
+  - id: gem-gemma-4-31b-it
+    model: gemma-4-31b-it
+    route: direct
+    base_url_env: GEMINI_BASE
+    api_key_env: GEMINI_API_KEY
+    tags: [direct, gemini]
