@@ -77,6 +77,17 @@ class Runner:
                 if self._aborted or self._cancelled:
                     return None
                 async with sem:
+                    # Every task is created up front by asyncio.gather() below and
+                    # races past the check above in the same event-loop tick, long
+                    # before any of them has made a real call -- only `concurrency`
+                    # of them get past the semaphore immediately, the rest just sit
+                    # in its wait queue. Re-checking here, now that this task has
+                    # actually been scheduled to run, is what makes a cancel or a
+                    # spend-ceiling trip actually stop queued-up work instead of
+                    # only the (already negligible) tasks that hadn't reached the
+                    # semaphore yet.
+                    if self._aborted or self._cancelled:
+                        return None
                     rec = await client.complete(
                         spec,
                         case.build_messages(),

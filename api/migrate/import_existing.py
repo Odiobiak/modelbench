@@ -25,6 +25,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from bench import report, store
 
 from .. import config, orm
+from ..adapters.runner_bridge import _json_safe
 from ..db import async_session_maker
 
 
@@ -140,7 +141,7 @@ async def import_runs(session) -> int:
             calls_done=len(df),
             spend_usd=float(df["cost_total_usd"].fillna(0).sum()),
             result_path=path,
-            summary_json=summary.to_dict("records"),
+            summary_json=_json_safe(summary.to_dict("records")),
         )
         stmt = pg_insert(orm.BenchRun).values(**values)
         # Never clobber a row that already has live status/progress from an

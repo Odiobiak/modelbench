@@ -70,7 +70,7 @@ async def list_packs(db: AsyncSession = Depends(get_db)):
         cases = (await db.execute(select(orm.BenchCase).where(orm.BenchCase.pack_id == p.id))).scalars().all()
         tags = sorted({t for c in cases for t in (c.tags or [])})
         difficulties = sorted({c.difficulty for c in cases})
-        out.append(schemas.PackOut(name=p.name, case_count=len(cases), tags=tags, difficulties=difficulties))
+        out.append(schemas.PackOut(name=p.name, description=p.description or "", case_count=len(cases), tags=tags, difficulties=difficulties))
     return out
 
 
@@ -83,7 +83,7 @@ async def create_pack(body: schemas.PackCreate, db: AsyncSession = Depends(get_d
     except IntegrityError:
         await db.rollback()
         raise HTTPException(409, f"Pack '{body.name}' already exists")
-    return schemas.PackOut(name=row.name, case_count=0, tags=[], difficulties=[])
+    return schemas.PackOut(name=row.name, description=row.description or "", case_count=0, tags=[], difficulties=[])
 
 
 async def _get_pack(db: AsyncSession, name: str) -> orm.BenchPack:
@@ -97,8 +97,24 @@ def _case_out(pack_name: str, row: orm.BenchCase) -> schemas.CaseOut:
     return schemas.CaseOut(
         id=row.id, pack=pack_name, case_key=row.case_key, messages=row.messages,
         system=row.system, tags=row.tags or [], difficulty=row.difficulty,
-        assertions=row.assertions or [], judge=row.judge or {}, created_at=row.created_at,
+        assertions=row.assertions or [], judge=row.judge or {},
+        reference=row.reference or {}, created_at=row.created_at,
     )
+
+
+@router.get("/cases", response_model=list[schemas.CaseOut])
+async def list_all_cases(db: AsyncSession = Depends(get_db)):
+    """Every case across every pack, for the cases table's "all packs" view --
+    lets pack be filtered/sorted as just another column instead of forcing a
+    per-pack drill-down first."""
+    rows = (
+        await db.execute(
+            select(orm.BenchCase, orm.BenchPack.name)
+            .join(orm.BenchPack, orm.BenchCase.pack_id == orm.BenchPack.id)
+            .order_by(orm.BenchPack.name, orm.BenchCase.created_at)
+        )
+    ).all()
+    return [_case_out(pack_name, row) for row, pack_name in rows]
 
 
 @router.get("/{name}/cases", response_model=list[schemas.CaseOut])

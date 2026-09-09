@@ -6,6 +6,7 @@ exactly as bench/cli.py already calls it, unmodified.
 """
 from __future__ import annotations
 
+import math
 import os
 from datetime import datetime, timezone
 
@@ -20,6 +21,20 @@ from .. import background, cache, config, orm
 from ..db import async_session_maker
 
 _PROGRESS_DB_FLUSH_EVERY = 10
+
+
+def _json_safe(records: list[dict]) -> list[dict]:
+    """NaN is valid to pandas (a model that never used reasoning/caching
+    leaves avg_reasoning_tokens etc. as NaN) but not to Postgres's json/jsonb
+    type -- json.dumps happily emits the literal token `NaN`, which asyncpg
+    then rejects outright. DataFrame.where(cond, None) doesn't fix this: on a
+    float column pandas casts the replacement `None` right back to NaN to
+    keep the column's dtype, so the swap has to happen after to_dict(),
+    on plain Python floats."""
+    return [
+        {k: (None if isinstance(v, float) and math.isnan(v) else v) for k, v in row.items()}
+        for row in records
+    ]
 
 
 def build_judge_spec(settings: dict) -> ModelSpec | None:
@@ -94,6 +109,7 @@ async def execute_run(
         cache.invalidate()  # a new run_*.parquet just landed; the dashboard's cached df is stale
         df = store.load_run(run_id, directory=config.RESULTS_DIR)
         summary = report.summarize(df)
+        summary_json = _json_safe(summary.to_dict("records"))
 
         async with async_session_maker() as session:
             await session.execute(
@@ -106,7 +122,7 @@ async def execute_run(
                     calls_done=len(records),
                     spend_usd=runner.spend,
                     result_path=result_path,
-                    summary_json=summary.to_dict("records"),
+                    summary_json=summary_json,
                 )
             )
             await session.commit()

@@ -111,12 +111,17 @@ export default function LaunchPage() {
                           <td style={{ textTransform: "capitalize", fontSize: 12.5, color: "var(--ink-2)" }}>
                             {p.difficulties.join(", ") || "—"}
                           </td>
-                          <td>
-                            {p.tags.map((t) => (
+                          <td style={{ whiteSpace: "normal", maxWidth: 260 }}>
+                            {p.tags.slice(0, 6).map((t) => (
                               <span className="tag" key={t}>
                                 {t}
                               </span>
                             ))}
+                            {p.tags.length > 6 && (
+                              <span className="tag" title={p.tags.slice(6).join(", ")}>
+                                +{p.tags.length - 6}
+                              </span>
+                            )}
                           </td>
                           <td className="num">{p.case_count}</td>
                         </tr>

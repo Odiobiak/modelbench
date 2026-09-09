@@ -81,7 +81,7 @@ export default function ModelsPage() {
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
 
   const [search, setSearch] = useState("");
-  const [routeFilter, setRouteFilter] = useState<"all" | "openrouter" | "direct">("all");
+  const [routeFilter, setRouteFilter] = useState<"all" | "openrouter" | "direct" | "anthropic" | "bedrock">("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   // Collapsed by default -- a growing registry (Discover adds many at once)
@@ -308,6 +308,8 @@ export default function ModelsPage() {
               <option value="all">Any route</option>
               <option value="openrouter">openrouter</option>
               <option value="direct">direct</option>
+              <option value="anthropic">anthropic</option>
+              <option value="bedrock">bedrock</option>
             </select>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)} style={{ width: "auto" }}>
               {STATUS_OPTIONS.map((s) => (

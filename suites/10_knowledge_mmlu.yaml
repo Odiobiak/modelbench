@@ -1,0 +1,384 @@
+version: '1'
+system: Answer the multiple-choice question. Reply with only the letter of the correct option.
+cases:
+- id: mmlu-anatomy-181
+  difficulty: medium
+  tags:
+  - knowledge
+  - mcq
+  - anatomy
+  input: |-
+    When an emergency opening into the airway is required, the cricothyroid membrane should be pierced immediately
+
+    A. superior to the thyroid cartilage.
+    B. inferior to the thyroid cartilage.
+    C. inferior to the cricoid cartilage.
+    D. superior to the thyroid isthmus.
+
+    Reply with only the single correct letter, nothing else.
+  assert:
+  - type: regex
+    value: ^\s*B\b
+    metric: knowledge_correct
+- id: mmlu-college_biology-786
+  difficulty: medium
+  tags:
+  - knowledge
+  - mcq
+  - college_biology
+  input: |-
+    A DNA strand with the sequence 5′ CGA TTG 3′ would be complementary to the sequence
+
+    A. 5′ GCU AAC 3′
+    B. 5′ GCT AAC 3′
+    C. 5′ GTT AGC 3′
+    D. 5′ CAA TCG 3′
+
+    Reply with only the single correct letter, nothing else.
+  assert:
+  - type: regex
+    value: ^\s*D\b
+    metric: knowledge_correct
+- id: mmlu-conceptual_physics-1769
+  difficulty: medium
+  tags:
+  - knowledge
+  - mcq
+  - conceptual_physics
+  input: |-
+    A karate chop delivers a force of 3000 N to a board that breaks. The force that the board exerts on the hand during this event is
+
+    A. less than 3000 N
+    B. 3000 N
+    C. greater than 3000 N
+    D. Need more information
+
+    Reply with only the single correct letter, nothing else.
+  assert:
+  - type: regex
+    value: ^\s*B\b
+    metric: knowledge_correct
+- id: mmlu-elementary_mathematics-2146
+  difficulty: medium
+  tags:
+  - knowledge
+  - mcq
+  - elementary_mathematics
+  input: |-
+    Use a number line to find the sum of −9 + (−8).
+
+    A. −17
+    B. 1
+    C. −1
+    D. 17
+
+    Reply with only the single correct letter, nothing else.
+  assert:
+  - type: regex
+    value: ^\s*A\b
+    metric: knowledge_correct
+- id: mmlu-high_school_chemistry-3109
+  difficulty: medium
+  tags:
+  - knowledge
+  - mcq
+  - high_school_chemistry
+  input: |-
+    To prepare a buffer, all of the following are needed except
+
+    A. an acid with a pKa close to the desired pH
+    B. a conjugate acid along with its conjugate base
+    C. a buffer capacity sufficient to react with added acid or base
+    D. triple-distilled water
+
+    Reply with only the single correct letter, nothing else.
+  assert:
+  - type: regex
+    value: ^\s*D\b
+    metric: knowledge_correct
+- id: mmlu-high_school_government_and_politics-3715
+  difficulty: medium
+  tags:
+  - knowledge
+  - mcq
+  - high_school_government_and_politics
+  input: |-
+    Which of the following is an example of "horse-race journalism"?
+
+    A. A news story focuses on a politician's scandals rather than achievements.
+    B. A television news anchor reports an event before the station's rivals.
+    C. A reporter announces which candidate leads in a public opinion poll.
+    D. A newspaper editor prints stories about long-term political developments.
+
+    Reply with only the single correct letter, nothing else.
+  assert:
+  - type: regex
+    value: ^\s*C\b
+    metric: knowledge_correct
+- id: mmlu-high_school_mathematics-4245
+  difficulty: medium
+  tags:
+  - knowledge
+  - mcq
+  - high_school_mathematics
+  input: |-
+    The polynomial which results from the expansion of $(x^2+5x+6)^2+(px+q)(x^3+7x^2+3x)$ has degree $2$. Find $p+q$.
+
+    A. -2
+    B. -4
+    C. -1
+    D. 1
+
+    Reply with only the single correct letter, nothing else.
+  assert:
+  - type: regex
+    value: ^\s*B\b
+    metric: knowledge_correct
+- id: mmlu-high_school_psychology-5199
+  difficulty: medium
+  tags:
+  - knowledge
+  - mcq
+  - high_school_psychology
+  input: |-
+    The president of a company brought in an outside consultant to disagree with him about an important decision to be discussed at a meeting of his top level executives in order to avoid
+
+    A. the bystander effect
+    B. groupthink
+    C. social loafing
+    D. the mere exposure effect
+
+    Reply with only the single correct letter, nothing else.
+  assert:
+  - type: regex
+    value: ^\s*B\b
+    metric: knowledge_correct
+- id: mmlu-high_school_statistics-5637
+  difficulty: medium
+  tags:
+  - knowledge
+  - mcq
+  - high_school_statistics
+  input: |-
+    Consider the two sets X = {10, 30, 45, 50, 55, 70, 90} and Y = {10, 30, 35, 50, 65, 70, 90}. Which of the following is false?
+
+    A. The sets have identical medians.
+    B. The sets have identical means.
+    C. The sets have identical ranges.
+    D. None of the above are false.
+
+    Reply with only the single correct letter, nothing else.
+  assert:
+  - type: regex
+    value: ^\s*D\b
+    metric: knowledge_correct
+- id: mmlu-international_law-6562
+  difficulty: medium
+  tags:
+  - knowledge
+  - mcq
+  - international_law
+  input: |-
+    What is meant by an international organisation's implied powers?
+
+    A. Implied are those powers which are necessary in order for an organisation to carry out the tasks conferred upon it and which are not stipulated in its charter
+    B. It refers to new powers assumed unilaterally by the organisation
+    C. It refers to powers conferred upon the organisation by the international Community
+    D. Implied powers are those whose determination depends on an expansive interpretation of an organisation's charter
+
+    Reply with only the single correct letter, nothing else.
+  assert:
+  - type: regex
+    value: ^\s*A\b
+    metric: knowledge_correct
+- id: mmlu-marketing-7060
+  difficulty: medium
+  tags:
+  - knowledge
+  - mcq
+  - marketing
+  input: |-
+    Why is market segmentation carried out?
+
+    A. To break down large markets into smaller markets.
+    B. To provide an opportunity to surpass competitors.
+    C. By grouping together customers with similar needs, it provides a commercially viable method of serving these customers.
+    D. To allow the achievement of greater market share.
+
+    Reply with only the single correct letter, nothing else.
+  assert:
+  - type: regex
+    value: ^\s*C\b
+    metric: knowledge_correct
+- id: mmlu-miscellaneous-7774
+  difficulty: medium
+  tags:
+  - knowledge
+  - mcq
+  - miscellaneous
+  input: |-
+    Which of these plants is the national emblem of Scotland?
+
+    A. ivy
+    B. thistle
+    C. rose
+    D. linden
+
+    Reply with only the single correct letter, nothing else.
+  assert:
+  - type: regex
+    value: ^\s*B\b
+    metric: knowledge_correct
+- id: mmlu-moral_scenarios-8663
+  difficulty: medium
+  tags:
+  - knowledge
+  - mcq
+  - moral_scenarios
+  input: |-
+    For which of these two scenarios does the main character (who uses I/me/my) do something clearly morally wrong, according to ordinary moral standards in the US as of 2020? Scenario 1 | As my parents left for vacation, I put on a movie. Scenario 2 | I took off my hat at the playground and waved at the kids.
+
+    A. Wrong, Wrong
+    B. Wrong, Not wrong
+    C. Not wrong, Wrong
+    D. Not wrong, Not wrong
+
+    Reply with only the single correct letter, nothing else.
+  assert:
+  - type: regex
+    value: ^\s*D\b
+    metric: knowledge_correct
+- id: mmlu-nutrition-9591
+  difficulty: medium
+  tags:
+  - knowledge
+  - mcq
+  - nutrition
+  input: |-
+    When epidemiologists judge the evidence to establish possible causes of a health outcome, they consider
+
+
+    A. The estimated strength of the association between an exposure and the outcome.
+    B. Evidence that the exposure of interest has appeared before the outcome.
+    C. Evidence showing that reductions in the exposure level will reverse the risk of the outcome.
+    D. All of the options given.
+
+    Reply with only the single correct letter, nothing else.
+  assert:
+  - type: regex
+    value: ^\s*D\b
+    metric: knowledge_correct
+- id: mmlu-philosophy-9898
+  difficulty: medium
+  tags:
+  - knowledge
+  - mcq
+  - philosophy
+  input: |-
+    What was Schopenhauer's attitude toward life?
+
+    A. He thought life was uncertain but worthwhile.
+    B. He thought life was hard but ultimately hopeful.
+    C. He thought life was bereft of meaning.
+    D. He believed in an afterlife in which all misery vanishes.
+
+    Reply with only the single correct letter, nothing else.
+  assert:
+  - type: regex
+    value: ^\s*C\b
+    metric: knowledge_correct
+- id: mmlu-professional_law-10656
+  difficulty: medium
+  tags:
+  - knowledge
+  - mcq
+  - professional_law
+  input: |-
+    A widow owned an apartment building. Several years ago, a student, in a signed writing, entered a three-year lease agreement with the widow. The student agreed to pay $800 monthly rent for the third-floor apartment in the widow's building. The original three-year term had long since expired, but the student had continued to pay his rent, and the widow continued to accept it. If the widow had chosen to evict the student immediately upon the end of the three-year period, and before she had accepted the next rent check, the student's strongest argument to prevent eviction, if true, would have been that
+
+    A. the leasehold contract was void ab initio.
+    B. the widow had not given the student requisitenotice for terminating a periodic tenancy.
+    C. the widow had not given the student requisitenotice for terminating a term of years.
+    D. the terms of the leasehold contract were binding on both parties.
+
+    Reply with only the single correct letter, nothing else.
+  assert:
+  - type: regex
+    value: ^\s*B\b
+    metric: knowledge_correct
+- id: mmlu-professional_law-11586
+  difficulty: medium
+  tags:
+  - knowledge
+  - mcq
+  - professional_law
+  input: |-
+    A driver drove his car into the full-service area ofa gas station. He told the attendant, "Ten gallons,please. " The attendant went ahead and pumped10 gallons of gas into the driver's tank. When theattendant approached the driver for payment, thedriver drove off without paying. The driver is guilty of
+
+    A. larceny.
+    B. larceny by trick.
+    C. false pretenses.
+    D. embezzlement.
+
+    Reply with only the single correct letter, nothing else.
+  assert:
+  - type: regex
+    value: ^\s*B\b
+    metric: knowledge_correct
+- id: mmlu-professional_psychology-12468
+  difficulty: medium
+  tags:
+  - knowledge
+  - mcq
+  - professional_psychology
+  input: |-
+    A patient wishes to use data from your recent neuropsychological evaluation in a civil hearing in which he is suing the supermarket where he slipped and fell. Which answer should be the first step in fulfilling this request after a release has been duly executed?
+
+    A. Provide the data and test forms to the patient
+    B. Provide the data and test forms to the patient’s attorney
+    C. Provide the data to an appropriately qualified psychologist as indicated on the release form
+    D. Provide all data and test forms, if contacted directly by the attorney
+
+    Reply with only the single correct letter, nothing else.
+  assert:
+  - type: regex
+    value: ^\s*C\b
+    metric: knowledge_correct
+- id: mmlu-professional_psychology-12961
+  difficulty: medium
+  tags:
+  - knowledge
+  - mcq
+  - professional_psychology
+  input: |-
+    ___________ has implications for internal validity and ___________ has implications for external validity.
+
+    A. Causality, generalizability
+    B. Random assignment, random selection
+    C. Random selection, random assignment
+    D. Temporal precedence, nonspuriousness
+
+    Reply with only the single correct letter, nothing else.
+  assert:
+  - type: regex
+    value: ^\s*B\b
+    metric: knowledge_correct
+- id: mmlu-sociology-13562
+  difficulty: medium
+  tags:
+  - knowledge
+  - mcq
+  - sociology
+  input: |-
+    Which of the following groups or organizations can be identified as having the characteristics of a bureaucracy?
+
+    A. An extended or consanguine family, including all the relatives by blood, marriage, or adoption
+    B. The government of a large city
+    C. A book club in which books are chosen by members who take turns alphabetically to lead discussion
+    D. The volunteers who gather annually to clean the neighborhood
+
+    Reply with only the single correct letter, nothing else.
+  assert:
+  - type: regex
+    value: ^\s*B\b
+    metric: knowledge_correct

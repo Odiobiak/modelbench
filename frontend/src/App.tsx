@@ -7,6 +7,7 @@ import CasesPage from "./pages/CasesPage";
 import LaunchPage from "./pages/LaunchPage";
 import RunsPage from "./pages/RunsPage";
 import RunDetailPage from "./pages/RunDetailPage";
+import RunComparePage from "./pages/RunComparePage";
 import DashboardPage from "./pages/DashboardPage";
 import SettingsPage from "./pages/SettingsPage";
 import { usePacks, useModels, useRuns } from "./api/hooks";
@@ -163,6 +164,7 @@ export default function App() {
           <Route path="/cases" element={<CasesPage />} />
           <Route path="/launch" element={<LaunchPage />} />
           <Route path="/runs" element={<RunsPage />} />
+          <Route path="/runs/compare" element={<RunComparePage />} />
           <Route path="/runs/:runId" element={<RunDetailPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>

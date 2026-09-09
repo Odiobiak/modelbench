@@ -311,6 +311,11 @@ nav {
 .content {
   padding: 26px 34px 70px;
   flex: 1;
+  /* Flex items default to min-width: auto, which refuses to shrink below
+     their content's intrinsic width -- a wide table (long model aliases,
+     many columns) would otherwise stretch the whole page instead of
+     scrolling within its own .tablewrap. This is what lets that work. */
+  min-width: 0;
 }
 
 /* ── buttons ───────────────────────────────────────────────────── */
@@ -354,6 +359,10 @@ nav {
 }
 .btn.ghost:hover {
   background: var(--surface-3);
+}
+.btn.ghost.active {
+  background: var(--accent-wash);
+  color: var(--accent);
 }
 .btn.sm {
   padding: 5px 10px;
@@ -676,7 +685,10 @@ textarea:focus {
 }
 .grid2 {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, 1fr): see the comment on .cases-layout -- a bare 1fr track
+     won't shrink below its content's min-content width, so one long
+     unbroken string in any .grid2 usage anywhere would stretch the page. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
 }
 .checklist {
@@ -1004,7 +1016,12 @@ details.adv[open] summary {
 /* ── test cases page ───────────────────────────────────────────── */
 .cases-layout {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  /* minmax(0, 1fr), not bare 1fr -- a grid track's automatic minimum size
+     is its content's min-content width, same trap as flexbox's implicit
+     min-width: auto. A single long, unbroken case prompt would otherwise
+     stretch this whole column (and the page) instead of staying inside
+     its own card. */
+  grid-template-columns: 220px minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }

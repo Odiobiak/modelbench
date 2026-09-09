@@ -3,14 +3,16 @@ export default function StatTile({
   value,
   sub,
   alarm,
+  hint,
 }: {
   label: string;
   value: string;
   sub: string;
   alarm?: boolean;
+  hint?: string;
 }) {
   return (
-    <div className={`tile${alarm ? " alarm" : ""}`}>
+    <div className={`tile${alarm ? " alarm" : ""}`} title={hint}>
       <div className="k">{label}</div>
       <div className="v">{value}</div>
       <div className="s">{sub}</div>

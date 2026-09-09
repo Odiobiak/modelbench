@@ -1,0 +1,363 @@
+version: '1'
+system: Follow every instruction in the prompt exactly, including formatting and structural constraints.
+judge_defaults:
+  min_score: 0.8
+cases:
+- id: ifeval-1040
+  difficulty: medium
+  tags:
+  - instruction-following
+  - change_case
+  - startend
+  input: Write me a resume for Matthias Algiers. Use words with all capital letters to highlight key abilities,
+    but make sure that words with all capital letters appear less than 10 times. Wrap the entire response
+    with double quotation marks.
+  judge:
+    criteria:
+      instruction_followed: The response fully satisfies every constraint stated in the prompt, not just
+        its content.
+    thresholds:
+      instruction_followed: 0.8
+- id: ifeval-1153
+  difficulty: medium
+  tags:
+  - instruction-following
+  - change_case
+  - keywords
+  input: Write a social media post for students of Islamic history about the hajj pilgrimage. Use all
+    lowercase letters and include the word story at least twice.
+  judge:
+    criteria:
+      instruction_followed: The response fully satisfies every constraint stated in the prompt, not just
+        its content.
+    thresholds:
+      instruction_followed: 0.8
+  assert:
+  - type: regex
+    value: ^[^A-Z]*$
+    metric: instruction_case
+- id: ifeval-136
+  difficulty: medium
+  tags:
+  - instruction-following
+  - detectable_format
+  - length_constraints
+  input: |-
+    A nucleus is a cluster of protons and neutrons. Elaborate on this. Write exactly 9 very short bullet points. Limit the number of words you use (less than 100 words). An example:
+    * A nucleus is a cluster of protons and neutrons
+    * A proton is ....
+
+    Please follow the format of the example above.
+  judge:
+    criteria:
+      instruction_followed: The response fully satisfies every constraint stated in the prompt, not just
+        its content.
+    thresholds:
+      instruction_followed: 0.8
+  assert:
+  - type: max_words
+    value: 99
+    metric: instruction_length
+- id: ifeval-143
+  difficulty: medium
+  tags:
+  - instruction-following
+  - detectable_content
+  - length_constraints
+  input: |-
+    A colt is 5 feet tall. It will grow 6 inches every month. How tall will it be in 3 years? Think step-by-step, then give your answer. Separate your thinking and the final answer by a line with just three "*" symbols: ***
+    At the end of your response, please explicitly add a postscript starting with P.P.S
+  judge:
+    criteria:
+      instruction_followed: The response fully satisfies every constraint stated in the prompt, not just
+        its content.
+    thresholds:
+      instruction_followed: 0.8
+- id: ifeval-164
+  difficulty: medium
+  tags:
+  - instruction-following
+  - length_constraints
+  input: Write a short essay about the updates of the latest episode of your favorite TV show. Use less
+    than 300 words.
+  judge:
+    criteria:
+      instruction_followed: The response fully satisfies every constraint stated in the prompt, not just
+        its content.
+    thresholds:
+      instruction_followed: 0.8
+  assert:
+  - type: max_words
+    value: 299
+    metric: instruction_length
+- id: ifeval-1773
+  difficulty: medium
+  tags:
+  - instruction-following
+  - detectable_format
+  input: 'Write a song about the summers of my childhood that I spent in the countryside. Give the song
+    a name, and highlight the name by wrapping it with *. For example: *little me in the countryside*.'
+  judge:
+    criteria:
+      instruction_followed: The response fully satisfies every constraint stated in the prompt, not just
+        its content.
+    thresholds:
+      instruction_followed: 0.8
+- id: ifeval-1883
+  difficulty: medium
+  tags:
+  - instruction-following
+  - keywords
+  - length_constraints
+  input: Write a song about being excited to go on vacation, without using the letter e whatsoever in
+    your entire response. Separate your song into 3 parts, where each part is separated with ***.
+  judge:
+    criteria:
+      instruction_followed: The response fully satisfies every constraint stated in the prompt, not just
+        its content.
+    thresholds:
+      instruction_followed: 0.8
+- id: ifeval-209
+  difficulty: medium
+  tags:
+  - instruction-following
+  - length_constraints
+  input: Write a blog post about the best way to get a good night's sleep with at least 400 words.
+  judge:
+    criteria:
+      instruction_followed: The response fully satisfies every constraint stated in the prompt, not just
+        its content.
+    thresholds:
+      instruction_followed: 0.8
+- id: ifeval-2207
+  difficulty: medium
+  tags:
+  - instruction-following
+  - keywords
+  input: 'Here is the summary of a research paper on the effect of VHF radio waves on a certain type of
+    bacteria: "Our results show that VHF radio waves have no effect on the growth of bacteria." Can you
+    help me rewrite this summary in a more formal way, using APA format? Do not use words "ours" or "have".'
+  judge:
+    criteria:
+      instruction_followed: The response fully satisfies every constraint stated in the prompt, not just
+        its content.
+    thresholds:
+      instruction_followed: 0.8
+  assert:
+  - type: not_contains_any
+    value:
+    - ours
+    - have
+    metric: instruction_forbidden
+- id: ifeval-2355
+  difficulty: medium
+  tags:
+  - instruction-following
+  - combination
+  input: |-
+    Wherefore doth people consider the 2nd Amendment to be outdated? Answer in a Shakespearean style.
+
+    Before you answer it, just repeat the request above. You need to repeat it exactly as it is. Do not change any word.
+  judge:
+    criteria:
+      instruction_followed: The response fully satisfies every constraint stated in the prompt, not just
+        its content.
+    thresholds:
+      instruction_followed: 0.8
+- id: ifeval-2422
+  difficulty: medium
+  tags:
+  - instruction-following
+  - change_case
+  - detectable_format
+  input: Write a joke about a startup that sells dog food in a song. Your entire response should be in
+    English, and in all capital letters. Your answer must contain a title, wrapped in double angular brackets,
+    i.e. <<title>>.
+  judge:
+    criteria:
+      instruction_followed: The response fully satisfies every constraint stated in the prompt, not just
+        its content.
+    thresholds:
+      instruction_followed: 0.8
+  assert:
+  - type: regex
+    value: ^[^a-z]*$
+    metric: instruction_case
+- id: ifeval-2571
+  difficulty: medium
+  tags:
+  - instruction-following
+  - change_case
+  - length_constraints
+  - punctuation
+  input: 'Which of the following is a better way to describe supporting ecological landscapes: (A) the
+    practice of using the natural features of a landscape to create a more sustainable environment, or
+    (B) the practice of using the natural features of a landscape to create a more aesthetically pleasing
+    environment? Your response should be in English, all capital letters, contain no commas, and be fewer
+    than 16 sentences.'
+  judge:
+    criteria:
+      instruction_followed: The response fully satisfies every constraint stated in the prompt, not just
+        its content.
+    thresholds:
+      instruction_followed: 0.8
+  assert:
+  - type: regex
+    value: ^[^a-z]*$
+    metric: instruction_case
+  - type: not_contains
+    value: ','
+    metric: instruction_punctuation
+  - type: max_sentences
+    value: 15
+    metric: instruction_length
+- id: ifeval-2752
+  difficulty: medium
+  tags:
+  - instruction-following
+  - detectable_format
+  input: The opposite of youth is not age, but ...? Highlight at least 2 sections in your answer with
+    markdown, i.e. *highlighted section*.
+  judge:
+    criteria:
+      instruction_followed: The response fully satisfies every constraint stated in the prompt, not just
+        its content.
+    thresholds:
+      instruction_followed: 0.8
+- id: ifeval-2909
+  difficulty: medium
+  tags:
+  - instruction-following
+  - detectable_format
+  - length_constraints
+  input: Could you elaborate on the sentence "A gymnast is in the air, performing a stunt."? Please highlight
+    at least 6 sections in your answer with markdown, i.e. *highlighted section*. Please write at least
+    300 words.
+  judge:
+    criteria:
+      instruction_followed: The response fully satisfies every constraint stated in the prompt, not just
+        its content.
+    thresholds:
+      instruction_followed: 0.8
+- id: ifeval-2969
+  difficulty: medium
+  tags:
+  - instruction-following
+  - detectable_format
+  input: Write a copy for an ad selling a sloop. It's a small sailboat with one mast that's easy to sail
+    and understand. Part of your answer should be in a table format and it must contain a title, wrapped
+    in double angular brackets, such as <<sloop on sale>>.
+  judge:
+    criteria:
+      instruction_followed: The response fully satisfies every constraint stated in the prompt, not just
+        its content.
+    thresholds:
+      instruction_followed: 0.8
+- id: ifeval-3156
+  difficulty: medium
+  tags:
+  - instruction-following
+  - keywords
+  input: I have been trying to get a refund for a product I bought online, but the company is refusing
+    to return my money. Can you help me write a letter to them? I want the letter to include the words
+    trust, brand, customer, law, policy, and unusable.
+  judge:
+    criteria:
+      instruction_followed: The response fully satisfies every constraint stated in the prompt, not just
+        its content.
+    thresholds:
+      instruction_followed: 0.8
+  assert:
+  - type: contains
+    value: trust
+    metric: instruction_keyword
+  - type: contains
+    value: brand
+    metric: instruction_keyword
+  - type: contains
+    value: customer
+    metric: instruction_keyword
+  - type: contains
+    value: law
+    metric: instruction_keyword
+  - type: contains
+    value: policy
+    metric: instruction_keyword
+  - type: contains
+    value: unusable
+    metric: instruction_keyword
+- id: ifeval-3335
+  difficulty: medium
+  tags:
+  - instruction-following
+  - combination
+  - language
+  - punctuation
+  input: "Hi, I'm looking for two Tamil movies to watch. Please recommend exactly two movies. Separated\
+    \ them by 6 asterisk symbols, like below:\n[Movie 1]\n[Description]\n******\n[Movie 2]\n[Description]\n\
+    \nYour entire response should be entirely in Tamil, no other language is allowed, and should not contain\
+    \ any commas. "
+  judge:
+    criteria:
+      instruction_followed: The response fully satisfies every constraint stated in the prompt, not just
+        its content.
+    thresholds:
+      instruction_followed: 0.8
+  assert:
+  - type: not_contains
+    value: ','
+    metric: instruction_punctuation
+- id: ifeval-349
+  difficulty: medium
+  tags:
+  - instruction-following
+  - detectable_format
+  - length_constraints
+  input: |-
+    I want to start a garden for veggies and flowers in my small backyard. Can you give me some advice on how to water my plants? Have at least 3 italic text sections, such as: *italic text 1*, *italic text 2*, etc.
+
+    Make your reply short -- the whole reply should contain less than 40 words.
+  judge:
+    criteria:
+      instruction_followed: The response fully satisfies every constraint stated in the prompt, not just
+        its content.
+    thresholds:
+      instruction_followed: 0.8
+  assert:
+  - type: max_words
+    value: 39
+    metric: instruction_length
+- id: ifeval-3595
+  difficulty: medium
+  tags:
+  - instruction-following
+  - keywords
+  input: Write a very short poem about the beauty of a rose. Do not include the keywords beauty and pretty.
+  judge:
+    criteria:
+      instruction_followed: The response fully satisfies every constraint stated in the prompt, not just
+        its content.
+    thresholds:
+      instruction_followed: 0.8
+  assert:
+  - type: not_contains_any
+    value:
+    - beauty
+    - pretty
+    metric: instruction_forbidden
+- id: ifeval-3710
+  difficulty: medium
+  tags:
+  - instruction-following
+  - detectable_content
+  - detectable_format
+  input: I need a rap that tells professionals how to get babies to sleep through the night. Your answer
+    must contain a title, wrapped in double angular brackets, such as <<title>>. Additionally, you need
+    to highlight at least 2 sections with markdown, i.e. *highlighted section*. Finally, at the end of
+    your response, please explicitly add a postscript starting with P.P.S
+  judge:
+    criteria:
+      instruction_followed: The response fully satisfies every constraint stated in the prompt, not just
+        its content.
+    thresholds:
+      instruction_followed: 0.8

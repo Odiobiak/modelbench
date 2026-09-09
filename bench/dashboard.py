@@ -92,7 +92,7 @@ def _series(rf: pd.DataFrame, metric: str, models: list[str]) -> dict:
 BASELINE_WINDOW = 4     # prior runs the latest is compared against
 
 
-def detect_drift(rf: pd.DataFrame) -> list[dict]:
+def detect_drift(rf: pd.DataFrame, excluded_run_ids: frozenset[str] = frozenset()) -> list[dict]:
     """
     Compare each model's latest run against a BASELINE, not against the single
     previous run.
@@ -104,6 +104,13 @@ def detect_drift(rf: pd.DataFrame) -> list[dict]:
 
     The baseline is the median of up to the previous four runs. A median rather
     than a mean so one bad afternoon on the provider's side does not move it.
+
+    `excluded_run_ids` (an API-layer concept -- runs a user has flagged as
+    known-bad; the CLI's static dashboard has no such flag, hence the default
+    empty set) drops those runs from the baseline's median computation. An
+    excluded run can still be `curr` (the latest run is always shown/compared
+    against, whether flagged or not) -- exclusion only stops it from being
+    used as *someone else's* baseline.
     """
     alerts = []
     metrics = [
@@ -118,7 +125,9 @@ def detect_drift(rf: pd.DataFrame) -> list[dict]:
         if len(g) < 2:
             continue
         curr = g.iloc[-1]
-        prior = g.iloc[-(BASELINE_WINDOW + 1):-1]
+        hist = g.iloc[:-1]
+        eligible = hist[~hist["run_id"].isin(excluded_run_ids)] if excluded_run_ids else hist
+        prior = eligible.iloc[-BASELINE_WINDOW:]
         n_base = len(prior)
 
         # Identity change is always an alert, whatever the metrics did. Checked

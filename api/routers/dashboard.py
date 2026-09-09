@@ -8,11 +8,12 @@ results/dashboard.html uses.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bench.dashboard import MAX_SERIES, _run_frame, _series, detect_drift, version_log
 
-from .. import cache, config
+from .. import cache, config, orm, overrides
 from ..db import get_db
 from ..deps import get_settings_dict
 
@@ -28,6 +29,12 @@ async def get_dashboard(
     if df.empty:
         raise HTTPException(404, "No results found yet. Run a benchmark first.")
 
+    # Corrections merge onto a copy of the cached raw DataFrame per request --
+    # results/run_*.parquet and the cache itself are never touched, only what
+    # this endpoint computes from them (see api/overrides.py).
+    ov = await overrides.load_overrides(db)
+    df = overrides.apply_overrides(df, ov)
+
     rf = _run_frame(df)
     if rf.empty:
         raise HTTPException(404, "No runs to chart yet.")
@@ -39,10 +46,16 @@ async def get_dashboard(
         rf.groupby("model_alias")["calls"].sum().sort_values(ascending=False).index.tolist()
     )
 
+    excluded_run_ids = frozenset(
+        (await db.execute(
+            select(orm.BenchRun.run_id).where(orm.BenchRun.excluded_from_baseline == True)  # noqa: E712
+        )).scalars().all()
+    )
+
     # Drift/version-change detection always covers every model regardless of
     # what's charted -- a regression shouldn't go unnoticed just because that
     # model isn't in the current chart selection.
-    alerts = detect_drift(rf)
+    alerts = detect_drift(rf, excluded_run_ids=excluded_run_ids)
     vlog = version_log(rf)
     crit = sum(1 for a in alerts if a["severity"] in ("critical", "serious"))
     latest_day = rf["day"].max()

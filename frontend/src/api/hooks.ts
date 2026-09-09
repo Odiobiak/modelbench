@@ -3,6 +3,8 @@ import { api } from "./client";
 import type {
   CaseIn,
   CaseOut,
+  CaseOverrideIn,
+  CaseOverrideOut,
   DashboardOut,
   DiscoverOut,
   DiscoverRequest,
@@ -13,7 +15,9 @@ import type {
   ModelUpdate,
   PackCreate,
   PackOut,
+  RunAnnotationUpdate,
   RunCaseOut,
+  RunCompareOut,
   RunLaunchRequest,
   RunOut,
   RunResultsOut,
@@ -83,6 +87,13 @@ export function useCases(pack: string | null) {
     enabled: !!pack,
   });
 }
+export function useAllCases(enabled: boolean) {
+  return useQuery({
+    queryKey: ["cases", "__all__"],
+    queryFn: () => api.get<CaseOut[]>("/packs/cases"),
+    enabled,
+  });
+}
 export function useCreatePack() {
   const qc = useQueryClient();
   return useMutation({
@@ -96,6 +107,7 @@ export function useAddCase() {
     mutationFn: ({ pack, body }: { pack: string; body: CaseIn }) => api.post<CaseOut>(`/packs/${pack}/cases`, body),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["cases", vars.pack] });
+      qc.invalidateQueries({ queryKey: ["cases", "__all__"] });
       qc.invalidateQueries({ queryKey: ["packs"] });
     },
   });
@@ -107,6 +119,7 @@ export function useDeleteCase() {
       api.del(`/packs/${pack}/cases/${caseKey}`),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["cases", vars.pack] });
+      qc.invalidateQueries({ queryKey: ["cases", "__all__"] });
       qc.invalidateQueries({ queryKey: ["packs"] });
     },
   });
@@ -134,6 +147,13 @@ export function useRunResults(runId: string | null, enabled: boolean) {
     enabled: !!runId && enabled,
   });
 }
+export function useCompareRuns(runIds: string[]) {
+  return useQuery({
+    queryKey: ["runs-compare", [...runIds].sort()],
+    queryFn: () => api.get<RunCompareOut[]>(`/runs/compare?ids=${encodeURIComponent(runIds.join(","))}`),
+    enabled: runIds.length > 0,
+  });
+}
 export function useRunCases(runId: string | null) {
   return useQuery({
     queryKey: ["run-cases", runId],
@@ -153,6 +173,40 @@ export function useCancelRun() {
   return useMutation({
     mutationFn: (runId: string) => api.post(`/runs/${runId}/cancel`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["runs"] }),
+  });
+}
+export function useUpdateRunAnnotation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ runId, body }: { runId: string; body: RunAnnotationUpdate }) =>
+      api.patch<RunOut>(`/runs/${runId}`, body),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["run", vars.runId] });
+      qc.invalidateQueries({ queryKey: ["runs"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+export function useSetCaseOverride() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ runId, recordId, body }: { runId: string; recordId: string; body: CaseOverrideIn }) =>
+      api.put<CaseOverrideOut>(`/runs/${runId}/cases/${recordId}/override`, body),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["run-cases", vars.runId] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+export function useClearCaseOverride() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ runId, recordId }: { runId: string; recordId: string }) =>
+      api.del(`/runs/${runId}/cases/${recordId}/override`),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["run-cases", vars.runId] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
   });
 }
 export function useEstimate() {

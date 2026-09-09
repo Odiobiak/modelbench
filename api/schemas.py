@@ -157,6 +157,7 @@ class SettingsOut(BaseModel):
 
 class PackOut(BaseModel):
     name: str
+    description: str = ""
     case_count: int
     tags: list[str]
     difficulties: list[str]
@@ -164,6 +165,7 @@ class PackOut(BaseModel):
 
 class PackCreate(BaseModel):
     name: str = Field(..., description="e.g. '10_billing_edge_cases'")
+    description: str = Field("", description="What this pack contains and, if applicable, where it's sourced from")
     version: str = "1"
     system: str = ""
     tools: list[dict] = Field(default_factory=list)
@@ -216,6 +218,7 @@ class CaseOut(BaseModel):
     difficulty: str
     assertions: list[dict[str, Any]]
     judge: dict[str, Any]
+    reference: dict[str, Any] = Field(default_factory=dict, description="Provenance/citation, e.g. {'source': 'Hugging Face -- cais/mmlu', 'note': '...'}")
     created_at: datetime
 
 
@@ -251,6 +254,14 @@ class RunOut(BaseModel):
     max_spend_usd: float | None
     error_message: str | None
     result_path: str | None
+    note: str | None = None
+    excluded_from_baseline: bool = False
+
+
+class RunAnnotationUpdate(BaseModel):
+    """All fields optional -- PATCH-style partial update."""
+    note: str | None = None
+    excluded_from_baseline: bool | None = None
 
 
 class RunResultsOut(BaseModel):
@@ -259,10 +270,27 @@ class RunResultsOut(BaseModel):
     summary: list[dict[str, Any]]
 
 
+class RunCompareOut(BaseModel):
+    """One run's identity + per-model summary, for the Runs page's
+    multi-select "compare" view. `summary` is empty for a run that hasn't
+    completed -- there's nothing to chart yet, not an error."""
+    run_id: str
+    status: str
+    created_at: datetime
+    model_ids: list[str]
+    pack_names: list[str]
+    note: str | None = None
+    summary: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class RunCaseOut(BaseModel):
     """One (case x model x repeat) row from the run's own parquet file --
     the raw data behind the aggregate summary, for the Run Detail page's
-    case browser and output/diff view."""
+    case browser and output/diff view. `passed` is always the raw measured
+    verdict -- never overwritten -- so a correction never silently changes
+    what this field means; `passed_override`/`override_note` carry the
+    correction alongside it (see api/overrides.py)."""
+    record_id: str
     case_key: str
     pack: str
     model_alias: str
@@ -276,6 +304,42 @@ class RunCaseOut(BaseModel):
     ts_utc: str
     tags: str
     difficulty: str
+    passed_override: bool | None = None
+    override_note: str | None = None
+
+    # Captured on every call but previously dropped at this boundary -- the
+    # Run Detail page's per-row "Details" drawer is the first consumer.
+    vendor: str = ""
+    model_served: str = ""
+    finish_reason: str = ""
+    prompt_tokens: int | None = None
+    cached_prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+    cost_total_usd: float | None = None
+    retry_count: int = 0
+    rate_limited: bool = False
+    error_message: str = ""
+    judge_model: str = ""
+    scores_json: str = "{}"
+    failed_assertions: str = ""
+
+
+class CaseOverrideIn(BaseModel):
+    passed_override: bool | None = None
+    note: str = Field(..., min_length=1, description="Why this row is being corrected")
+    edited_by: str | None = None
+
+
+class CaseOverrideOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    run_id: str
+    record_id: str
+    passed_override: bool | None
+    note: str
+    edited_by: str | None
+    edited_at: datetime
 
 
 class EstimateRequest(BaseModel):

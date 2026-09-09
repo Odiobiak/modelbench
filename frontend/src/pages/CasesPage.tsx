@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Drawer from "../components/Drawer";
 import RunLauncherPanel from "../components/RunLauncherPanel";
-import { useAddCase, useCases, useDeleteCase, usePacks } from "../api/hooks";
+import { useAddCase, useAllCases, useCases, useDeleteCase, usePacks } from "../api/hooks";
 import type { AssertionOut, CaseCheck, CaseOut, CaseTurn, CheckType, JudgeCriterion } from "../api/types";
 import { toast } from "../toast";
 import { ApiError } from "../api/client";
@@ -64,10 +64,18 @@ function assertionToCheck(a: AssertionOut): CaseCheck {
   return { type: a.type as CheckType, value: a.value as CaseCheck["value"] };
 }
 
+// Pseudo pack-id for "every pack at once" -- lets the sidebar reuse the same
+// single-selection state instead of a separate view-mode flag.
+const ALL_PACKS = "__all__";
+
 export default function CasesPage() {
   const { data: packs } = usePacks();
   const [currentPack, setCurrentPack] = useState<string | null>(null);
-  const { data: cases, isLoading } = useCases(currentPack);
+  const isAllPacks = currentPack === ALL_PACKS;
+  const { data: singlePackCases, isLoading: singleLoading } = useCases(isAllPacks ? null : currentPack);
+  const { data: allPackCases, isLoading: allLoading } = useAllCases(isAllPacks);
+  const cases = isAllPacks ? allPackCases : singlePackCases;
+  const isLoading = isAllPacks ? allLoading : singleLoading;
   const addCase = useAddCase();
   const deleteCase = useDeleteCase();
 
@@ -79,11 +87,84 @@ export default function CasesPage() {
   // only ever means something within the pack it was made in.
   const [selectedCases, setSelectedCases] = useState<Set<string>>(new Set());
   useEffect(() => setSelectedCases(new Set()), [currentPack]);
+  // Which real packs the current selection actually spans -- always just
+  // [currentPack] outside the "All packs" view, but the launcher needs the
+  // real set once selection can span multiple packs at once.
+  const selectedPackNames = useMemo(
+    () => Array.from(new Set((cases ?? []).filter((c) => selectedCases.has(c.case_key)).map((c) => c.pack))),
+    [cases, selectedCases]
+  );
 
   const [runDrawerOpen, setRunDrawerOpen] = useState(false);
   const [viewingCase, setViewingCase] = useState<CaseOut | null>(null);
   const [packSearch, setPackSearch] = useState("");
   const filteredPacks = (packs ?? []).filter((p) => p.name.toLowerCase().includes(packSearch.trim().toLowerCase()));
+  const currentPackInfo = isAllPacks ? null : packs?.find((p) => p.name === currentPack) ?? null;
+
+  // Case list filter/sort -- independent of the pack filter above, and reset
+  // whenever the viewed pack changes since a filter tuned for one pack's
+  // tags/difficulty mix rarely means anything in another. The pack filter
+  // and "Pack" sort only do anything in the "All packs" view -- within a
+  // single pack every row already shares the same value.
+  const [caseSearch, setCaseSearch] = useState("");
+  const [difficultyFilter, setDifficultyFilter] = useState<"all" | "easy" | "medium" | "hard">("all");
+  const [tagFilter, setTagFilter] = useState("all");
+  const [packFilter, setPackFilter] = useState("all");
+  const [sortKey, setSortKey] = useState<"case_key" | "difficulty" | "created_at" | "pack">("case_key");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  useEffect(() => {
+    setCaseSearch("");
+    setDifficultyFilter("all");
+    setTagFilter("all");
+    setPackFilter("all");
+  }, [currentPack]);
+
+  const availableTags = useMemo(() => Array.from(new Set((cases ?? []).flatMap((c) => c.tags))).sort(), [cases]);
+  const availablePacks = useMemo(() => Array.from(new Set((cases ?? []).map((c) => c.pack))).sort(), [cases]);
+
+  const visibleCases = useMemo(() => {
+    let rows = cases ?? [];
+    const needle = caseSearch.trim().toLowerCase();
+    if (needle) {
+      rows = rows.filter(
+        (c) =>
+          c.case_key.toLowerCase().includes(needle) ||
+          c.messages.some((m) => m.content.toLowerCase().includes(needle)) ||
+          c.tags.some((t) => t.toLowerCase().includes(needle))
+      );
+    }
+    if (difficultyFilter !== "all") rows = rows.filter((c) => c.difficulty === difficultyFilter);
+    if (tagFilter !== "all") rows = rows.filter((c) => c.tags.includes(tagFilter));
+    if (isAllPacks && packFilter !== "all") rows = rows.filter((c) => c.pack === packFilter);
+    const DIFFICULTY_RANK: Record<string, number> = { easy: 0, medium: 1, hard: 2 };
+    const sorted = [...rows].sort((a, b) => {
+      let av: string | number, bv: string | number;
+      if (sortKey === "difficulty") {
+        av = DIFFICULTY_RANK[a.difficulty] ?? 99;
+        bv = DIFFICULTY_RANK[b.difficulty] ?? 99;
+      } else if (sortKey === "created_at") {
+        av = a.created_at;
+        bv = b.created_at;
+      } else if (sortKey === "pack") {
+        av = `${a.pack} ${a.case_key}`;
+        bv = `${b.pack} ${b.case_key}`;
+      } else {
+        av = a.case_key;
+        bv = b.case_key;
+      }
+      return av < bv ? -1 : av > bv ? 1 : 0;
+    });
+    if (sortDir === "desc") sorted.reverse();
+    return sorted;
+  }, [cases, caseSearch, difficultyFilter, tagFilter, packFilter, isAllPacks, sortKey, sortDir]);
+
+  function toggleSort(key: typeof sortKey) {
+    if (sortKey === key) setSortDir(sortDir === "asc" ? "desc" : "asc");
+    else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
 
   const [open, setOpen] = useState(false);
   const [pack, setPack] = useState("");
@@ -97,7 +178,7 @@ export default function CasesPage() {
   const [judgeCriteria, setJudgeCriteria] = useState<JudgeCriterion[]>([]);
 
   function openDrawer() {
-    setPack(currentPack || packs?.[0]?.name || "");
+    setPack((!isAllPacks && currentPack) || packs?.[0]?.name || "");
     setNewPack("");
     setTurns([{ role: "user", content: "" }]);
     setCaseKey("");
@@ -203,10 +284,10 @@ export default function CasesPage() {
     setSelectedCases(next);
   }
 
-  async function removeCase(key: string) {
-    if (!currentPack || !confirm(`Remove case "${key}"?`)) return;
+  async function removeCase(pack: string, key: string) {
+    if (!confirm(`Remove case "${key}"?`)) return;
     try {
-      await deleteCase.mutateAsync({ pack: currentPack, caseKey: key });
+      await deleteCase.mutateAsync({ pack, caseKey: key });
     } catch (e) {
       toast(e instanceof ApiError ? e.message : "Failed to remove case");
     }
@@ -244,6 +325,14 @@ export default function CasesPage() {
             />
           </div>
           <div className="pack-list">
+            <button
+              className={`pack-list-item${isAllPacks ? " active" : ""}`}
+              onClick={() => setCurrentPack(ALL_PACKS)}
+              title="Every case across every pack"
+            >
+              <span style={{ fontWeight: 600, fontSize: 12.5 }}>All packs</span>
+              <span className="n">{(packs ?? []).reduce((sum, p) => sum + p.case_count, 0)}</span>
+            </button>
             {filteredPacks.map((p) => (
               <button
                 key={p.name}
@@ -262,7 +351,23 @@ export default function CasesPage() {
         </div>
 
         <div>
-          <ExamplePanel example={cases?.[0] ?? null} pack={currentPack} />
+          {currentPackInfo?.description && (
+            <div className="panel" style={{ marginBottom: 16, padding: "14px 18px" }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
+                <span className="mono" style={{ fontWeight: 600, fontSize: 13.5 }}>
+                  {currentPackInfo.name}
+                </span>
+                {currentPackInfo.description.startsWith("Source:") && (
+                  <span className="tag" style={{ fontSize: 10.5 }}>
+                    huggingface
+                  </span>
+                )}
+              </div>
+              <p style={{ margin: 0, fontSize: 13, color: "var(--ink-2)" }}>{currentPackInfo.description}</p>
+            </div>
+          )}
+
+          <ExamplePanel example={cases?.[0] ?? null} pack={isAllPacks ? "all packs" : currentPack} />
 
           <div className="panel">
           {selectedCases.size > 0 && (
@@ -279,11 +384,69 @@ export default function CasesPage() {
               </button>
             </div>
           )}
+
+          <div style={{ display: "flex", gap: 10, padding: "12px 18px 0", flexWrap: "wrap", alignItems: "center" }}>
+            <input
+              type="text"
+              placeholder="Search case key, prompt, tag…"
+              value={caseSearch}
+              onChange={(e) => setCaseSearch(e.target.value)}
+              style={{ width: 220 }}
+            />
+            <select value={difficultyFilter} onChange={(e) => setDifficultyFilter(e.target.value as typeof difficultyFilter)} style={{ width: "auto" }}>
+              <option value="all">Any difficulty</option>
+              <option value="easy">Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+            {availableTags.length > 0 && (
+              <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} style={{ width: "auto" }}>
+                <option value="all">Any tag</option>
+                {availableTags.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            )}
+            {isAllPacks && availablePacks.length > 0 && (
+              <select value={packFilter} onChange={(e) => setPackFilter(e.target.value)} style={{ width: "auto" }}>
+                <option value="all">Any pack</option>
+                {availablePacks.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            )}
+            <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--muted)" }}>
+              Sort:
+              {isAllPacks && (
+                <button className={`btn sm ghost${sortKey === "pack" ? " active" : ""}`} onClick={() => toggleSort("pack")}>
+                  Pack{sortKey === "pack" ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
+                </button>
+              )}
+              <button className={`btn sm ghost${sortKey === "case_key" ? " active" : ""}`} onClick={() => toggleSort("case_key")}>
+                Case{sortKey === "case_key" ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
+              </button>
+              <button className={`btn sm ghost${sortKey === "difficulty" ? " active" : ""}`} onClick={() => toggleSort("difficulty")}>
+                Difficulty{sortKey === "difficulty" ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
+              </button>
+              <button className={`btn sm ghost${sortKey === "created_at" ? " active" : ""}`} onClick={() => toggleSort("created_at")}>
+                Newest{sortKey === "created_at" ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
+              </button>
+            </span>
+            <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
+              {visibleCases.length} of {cases?.length ?? 0} cases
+            </span>
+          </div>
+
           {isLoading && <p className="empty-hint">Loading…</p>}
           {cases?.length === 0 && <p className="empty-hint">No test cases yet. Click "Add test case" above.</p>}
+          {(cases?.length ?? 0) > 0 && visibleCases.length === 0 && <p className="empty-hint">No cases match this filter.</p>}
 
           <div className="caselist">
-            {cases?.map((c) => {
+            {visibleCases.map((c) => {
               const preview = c.messages.map((m) => m.content).join("  ·  ");
               return (
                 <div className="caserow" key={c.id}>
@@ -294,6 +457,11 @@ export default function CasesPage() {
                   />
                   <div className="caserow-main" onClick={() => setViewingCase(c)}>
                     <div className="caserow-id-line">
+                      {isAllPacks && (
+                        <span className="tag mono" title="Pack">
+                          {c.pack}
+                        </span>
+                      )}
                       <span className="mono" style={{ fontWeight: 600, fontSize: 13 }}>
                         {c.case_key}
                       </span>
@@ -318,7 +486,7 @@ export default function CasesPage() {
                         <circle cx="12" cy="12" r="3" />
                       </svg>
                     </button>
-                    <button className="iconbtn" title="Remove" onClick={() => removeCase(c.case_key)}>
+                    <button className="iconbtn" title="Remove" onClick={() => removeCase(c.pack, c.case_key)}>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m2 0l-1 13a1 1 0 01-1 1H8a1 1 0 01-1-1L6 7" />
                       </svg>
@@ -526,6 +694,17 @@ export default function CasesPage() {
                 </div>
               </div>
             )}
+            {viewingCase.reference?.source && (
+              <div className="field">
+                <span className="section-label">Source</span>
+                <p style={{ margin: 0, fontSize: 13 }}>
+                  <strong>{viewingCase.reference.source}</strong>
+                  {viewingCase.reference.note && (
+                    <span style={{ display: "block", color: "var(--ink-2)", marginTop: 3 }}>{viewingCase.reference.note}</span>
+                  )}
+                </p>
+              </div>
+            )}
             {viewingCase.system && (
               <div className="field">
                 <span className="section-label">System prompt override</span>
@@ -580,11 +759,15 @@ export default function CasesPage() {
           </button>
         }
       >
-        {currentPack && (
+        {selectedPackNames.length > 0 && (
           <RunLauncherPanel
-            packNames={[currentPack]}
+            packNames={selectedPackNames}
             caseKeys={Array.from(selectedCases)}
-            caseCountLabel={`${selectedCases.size} case(s) from ${currentPack}`}
+            caseCountLabel={
+              isAllPacks
+                ? `${selectedCases.size} case(s) from ${selectedPackNames.length} pack(s)`
+                : `${selectedCases.size} case(s) from ${currentPack}`
+            }
           />
         )}
       </Drawer>
@@ -624,7 +807,7 @@ function ExamplePanel({ example, pack }: { example: CaseOut | null; pack: string
           A real example from <span className="mono">{pack}</span> — click "View full case" on any row below to see one in full
         </span>
       </div>
-      <div className="grid2" style={{ padding: "16px 18px", gridTemplateColumns: "1fr 1fr 1fr", gap: 20 }}>
+      <div className="grid2" style={{ padding: "16px 18px", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)", gap: 20 }}>
         <div>
           <span className="kicker">1 · This gets sent</span>
           <p style={{ margin: 0, fontSize: 13, color: "var(--ink-2)" }}>{prompt}</p>

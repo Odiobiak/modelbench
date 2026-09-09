@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useCancelRun, useRuns } from "../api/hooks";
 import { fmtDate, fmtMoney } from "../format";
 import type { RunOut } from "../api/types";
@@ -8,6 +8,7 @@ type SortKey = "created_at" | "calls_done" | "spend_usd";
 const STATUSES = ["all", "pending", "running", "completed", "failed", "cancelled"] as const;
 
 export default function RunsPage() {
+  const navigate = useNavigate();
   const { data: runs, isLoading } = useRuns();
   const cancelRun = useCancelRun();
 
@@ -15,6 +16,17 @@ export default function RunsPage() {
   const [modelFilter, setModelFilter] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("created_at");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  function toggleSelected(runId: string) {
+    const next = new Set(selected);
+    if (next.has(runId)) next.delete(runId);
+    else next.add(runId);
+    setSelected(next);
+  }
+  function goCompare() {
+    navigate(`/runs/compare?ids=${encodeURIComponent(Array.from(selected).join(","))}`);
+  }
 
   const filtered = useMemo(() => {
     let rows = runs ?? [];
@@ -55,7 +67,21 @@ export default function RunsPage() {
       </div>
       <div className="content">
         <div className="panel">
-          <div style={{ display: "flex", gap: 10, padding: "14px 18px 0", flexWrap: "wrap" }}>
+          {selected.size > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 18px 0" }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>{selected.size} selected</span>
+              <button className="btn sm primary" onClick={goCompare}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                  <path d="M3 17l5-6 4 4 5-8 4 5" />
+                </svg>
+                Compare
+              </button>
+              <button className="btn sm ghost" onClick={() => setSelected(new Set())}>
+                Clear
+              </button>
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 10, padding: "12px 18px 0", flexWrap: "wrap" }}>
             <select value={status} onChange={(e) => setStatus(e.target.value as (typeof STATUSES)[number])} style={{ width: "auto" }}>
               {STATUSES.map((s) => (
                 <option key={s} value={s}>
@@ -78,6 +104,7 @@ export default function RunsPage() {
             <table>
               <thead>
                 <tr>
+                  <th style={{ width: 32 }}></th>
                   <th className="sortable" style={{ cursor: "pointer" }} onClick={() => toggleSort("created_at")}>
                     Run{sortArrow("created_at")}
                   </th>
@@ -96,20 +123,23 @@ export default function RunsPage() {
               <tbody>
                 {isLoading && (
                   <tr>
-                    <td colSpan={7} className="empty-hint">
+                    <td colSpan={8} className="empty-hint">
                       Loading…
                     </td>
                   </tr>
                 )}
                 {filtered.length === 0 && !isLoading && (
                   <tr>
-                    <td colSpan={7} className="empty-hint">
+                    <td colSpan={8} className="empty-hint">
                       {runs?.length ? "No runs match this filter." : "No runs yet — launch one from the Launch run page."}
                     </td>
                   </tr>
                 )}
                 {filtered.map((r) => (
                   <tr key={r.run_id}>
+                    <td>
+                      <input type="checkbox" checked={selected.has(r.run_id)} onChange={() => toggleSelected(r.run_id)} />
+                    </td>
                     <td>
                       <div style={{ fontSize: 13 }}>{fmtDate(r.created_at)}</div>
                       <div className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>
@@ -121,6 +151,11 @@ export default function RunsPage() {
                         <span className="d" />
                         {r.status}
                       </span>
+                      {r.excluded_from_baseline && (
+                        <span className="tag" style={{ marginLeft: 6, color: "var(--critical)" }} title={r.note ?? undefined}>
+                          excluded
+                        </span>
+                      )}
                     </td>
                     <td>
                       {r.model_ids.map((m) => (

@@ -74,6 +74,7 @@ class BenchPack(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     version: Mapped[str] = mapped_column(String, nullable=False, default="1")
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     system: Mapped[str] = mapped_column(Text, nullable=False, default="")
     tools: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     judge_defaults: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
@@ -130,5 +131,22 @@ class BenchRun(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     result_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     summary_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    excluded_from_baseline: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     org_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+
+class BenchCaseOverride(Base):
+    """A correction to one case-level metric row, addressed by the RunRecord's
+    own `record_id` (bench/schema.py). Never mutates results/run_*.parquet --
+    the API layer merges this onto the read-side DataFrame per request, so
+    the Parquet file stays the untouched raw measurement (see api/overrides.py)."""
+    __tablename__ = "bench_case_overrides"
+
+    run_id: Mapped[str] = mapped_column(String, primary_key=True)
+    record_id: Mapped[str] = mapped_column(String, primary_key=True)
+    passed_override: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+    edited_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    edited_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

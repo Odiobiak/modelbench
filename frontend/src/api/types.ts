@@ -68,6 +68,7 @@ export interface DiscoverOut {
 
 export interface PackOut {
   name: string;
+  description: string;
   case_count: number;
   tags: string[];
   difficulties: string[];
@@ -123,6 +124,7 @@ export interface CaseOut {
   difficulty: string;
   assertions: AssertionOut[];
   judge: Record<string, unknown>;
+  reference: { source?: string; note?: string; [key: string]: unknown };
   created_at: string;
 }
 
@@ -152,6 +154,13 @@ export interface RunOut {
   max_spend_usd: number | null;
   error_message: string | null;
   result_path: string | null;
+  note: string | null;
+  excluded_from_baseline: boolean;
+}
+
+export interface RunAnnotationUpdate {
+  note?: string | null;
+  excluded_from_baseline?: boolean;
 }
 
 export interface RunResultsOut {
@@ -161,6 +170,7 @@ export interface RunResultsOut {
 }
 
 export interface RunCaseOut {
+  record_id: string;
   case_key: string;
   pack: string;
   model_alias: string;
@@ -174,6 +184,80 @@ export interface RunCaseOut {
   ts_utc: string;
   tags: string;
   difficulty: string;
+  passed_override: boolean | null;
+  override_note: string | null;
+  vendor: string;
+  model_served: string;
+  finish_reason: string;
+  prompt_tokens: number | null;
+  cached_prompt_tokens: number | null;
+  completion_tokens: number | null;
+  total_tokens: number | null;
+  cost_total_usd: number | null;
+  retry_count: number;
+  rate_limited: boolean;
+  error_message: string;
+  judge_model: string;
+  scores_json: string;
+  failed_assertions: string;
+}
+
+// One row of RunResultsOut.summary -- built by bench/report.py's
+// summarize(), a plain dict on the wire since its pack.<name> keys are
+// dynamic; the fixed fields below are the ones the Run Detail charts read.
+export interface RunSummaryRow {
+  model_alias: string;
+  vendor: string;
+  model_served: string;
+  served_by: string;
+  calls: number;
+  error_rate: number | null;
+  rate_limited: number;
+  pass_rate: number | null;
+  ttft_ms_p50: number | null;
+  ttft_ms_p90: number | null;
+  ttft_ms_p95: number | null;
+  ttft_ms_p99: number | null;
+  latency_ms_p50: number | null;
+  latency_ms_p90: number | null;
+  latency_ms_p95: number | null;
+  latency_ms_p99: number | null;
+  tokens_per_second: number | null;
+  avg_prompt_tokens: number | null;
+  avg_completion_tokens: number | null;
+  avg_reasoning_tokens: number | null;
+  avg_cached_tokens: number | null;
+  avg_cost_usd: number | null;
+  cost_per_1k_calls: number | null;
+  cost_per_success: number | null;
+  [pack: `pack.${string}`]: unknown;
+}
+
+// One run's identity + per-model summary, for the Runs page's multi-select
+// comparison view. `summary` is [] for a run that hasn't completed yet.
+export interface RunCompareOut {
+  run_id: string;
+  status: string;
+  created_at: string;
+  model_ids: string[];
+  pack_names: string[];
+  note: string | null;
+  summary: RunSummaryRow[];
+}
+
+export interface CaseOverrideIn {
+  passed_override: boolean | null;
+  note: string;
+  edited_by?: string | null;
+}
+
+export interface CaseOverrideOut {
+  run_id: string;
+  record_id: string;
+  passed_override: boolean | null;
+  note: string;
+  edited_by: string | null;
+  edited_at: string;
 }
 
 export interface EstimateRequest {

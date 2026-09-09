@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   useCancelRun,
@@ -9,10 +9,11 @@ import {
   useUpdateModel,
   useVerifyModel,
 } from "../api/hooks";
-import { fmtMoney, modelReadiness } from "../format";
+import { fmtMoney, modelReadiness, providerLabel } from "../format";
 import { toast } from "../toast";
 import { ApiError } from "../api/client";
 import DiscoverModelsDrawer from "./DiscoverModelsDrawer";
+import type { ModelOut } from "../api/types";
 
 /**
  * The "pick models, see the estimate, launch, watch progress" flow -- shared
@@ -47,6 +48,48 @@ export default function RunLauncherPanel({
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [verifyingIds, setVerifyingIds] = useState<Set<string>>(new Set());
   const [discoverOpen, setDiscoverOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  // A growing registry (Discover adds a batch at once) turns into an
+  // undifferentiated wall of rows fast -- group by provider and let search
+  // jump straight to e.g. "deepseek" instead of scanning everything.
+  const searched = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return sortedModels;
+    return sortedModels.filter((m) => `${m.alias} ${m.model} ${m.vendor ?? ""} ${m.tags.join(" ")}`.toLowerCase().includes(needle));
+  }, [sortedModels, search]);
+
+  const allProviders = useMemo(() => Array.from(new Set(sortedModels.map(providerLabel))), [sortedModels]);
+  const [collapsed, setCollapsed] = useState<Set<string> | null>(null);
+  const seeded = collapsed !== null;
+  useEffect(() => {
+    if (!seeded && allProviders.length) setCollapsed(new Set(allProviders));
+  }, [seeded, allProviders]);
+  const collapsedSet = collapsed ?? new Set(allProviders);
+  const hasSearch = search.trim() !== "";
+
+  const groups = useMemo(() => {
+    const map = new Map<string, ModelOut[]>();
+    for (const m of searched) {
+      const key = providerLabel(m);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(m);
+    }
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [searched]);
+
+  function toggleGroupCollapse(provider: string) {
+    const next = new Set(collapsedSet);
+    if (next.has(provider)) next.delete(provider);
+    else next.add(provider);
+    setCollapsed(next);
+  }
+
+  function selectGroup(rows: ModelOut[], on: boolean) {
+    const next = new Set(selectedModels);
+    rows.forEach((m) => (on ? next.add(m.alias) : next.delete(m.alias)));
+    setSelectedModels(next);
+  }
 
   const modelIds = Array.from(selectedModels);
   const canEstimate = modelIds.length > 0 && packNames.length > 0;
@@ -170,78 +213,122 @@ export default function RunLauncherPanel({
             </a>
           </span>
         </div>
-        <div className="tablewrap">
-          <table>
-            <thead>
-              <tr>
-                <th style={{ width: 32 }}></th>
-                <th>Model</th>
-                <th>Route</th>
-                <th className="num">$in/M</th>
-                <th>Connectivity</th>
-                <th>Enabled</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedModels.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="empty-hint">
-                    No models registered yet —{" "}
-                    <a href="#" style={{ color: "var(--accent)" }} onClick={(e) => { e.preventDefault(); setDiscoverOpen(true); }}>
-                      discover some
-                    </a>{" "}
-                    from a provider you have a key for, or add one on the Models page.
-                  </td>
-                </tr>
-              )}
-              {sortedModels.map((m) => {
-                const readiness = modelReadiness(m);
-                return (
-                  <tr key={m.id} style={{ opacity: m.enabled ? 1 : 0.65 }}>
-                    <td>
-                      <input type="checkbox" checked={selectedModels.has(m.alias)} onChange={() => toggleModel(m.alias)} />
-                    </td>
-                    <td>
-                      <div className="mono" style={{ fontWeight: 600 }}>
-                        {m.alias}
-                      </div>
-                      <div style={{ fontSize: 11, color: "var(--muted)" }}>{m.vendor ?? m.model}</div>
-                    </td>
-                    <td style={{ fontSize: 12.5 }}>{m.route}</td>
-                    <td className="num">{m.price_input_per_mtok != null ? `$${m.price_input_per_mtok.toFixed(3)}` : "—"}</td>
-                    <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span className={`pill ${readiness.cls}`} title={m.verified_message ?? undefined}>
-                          <span className="d" />
-                          {readiness.label}
-                        </span>
-                        {m.is_ready && (
-                          <button
-                            className="iconbtn"
-                            title="Verify connectivity"
-                            onClick={() => verifyOne(m.id, m.alias)}
-                            disabled={verifyingIds.has(m.id)}
-                          >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M21 12a9 9 0 11-3-6.7M21 3v6h-6" />
-                            </svg>
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                    <td>
-                      <label className="switch">
-                        <input type="checkbox" checked={m.enabled} onChange={(e) => toggleEnabled(m.id, e.target.checked)} />
-                        <span className="track" />
-                        <span className="knob" />
-                      </label>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div style={{ padding: "12px 18px 0" }}>
+          <input
+            type="text"
+            placeholder="Search alias, model, vendor, tag…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
+
+        {sortedModels.length === 0 && (
+          <p className="empty-hint">
+            No models registered yet —{" "}
+            <a href="#" style={{ color: "var(--accent)" }} onClick={(e) => { e.preventDefault(); setDiscoverOpen(true); }}>
+              discover some
+            </a>{" "}
+            from a provider you have a key for, or add one on the Models page.
+          </p>
+        )}
+        {sortedModels.length > 0 && groups.length === 0 && <p className="empty-hint">No models match "{search}".</p>}
+
+        {groups.map(([provider, rows]) => {
+          const isCollapsed = !hasSearch && collapsedSet.has(provider);
+          const selectedInGroup = rows.filter((m) => selectedModels.has(m.alias)).length;
+          return (
+            <div key={provider} style={{ borderTop: "1px solid var(--line)" }}>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 18px", cursor: "pointer" }}
+                onClick={() => toggleGroupCollapse(provider)}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.4"
+                  style={{ width: 11, height: 11, transform: isCollapsed ? "rotate(-90deg)" : undefined, flex: "none" }}
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+                <span style={{ textTransform: "capitalize", fontWeight: 600, fontSize: 12.5 }}>{provider}</span>
+                <span className="tag">{rows.length}</span>
+                {selectedInGroup > 0 && <span className="tag">{selectedInGroup} selected</span>}
+                <span style={{ marginLeft: "auto", display: "flex", gap: 6 }} onClick={(e) => e.stopPropagation()}>
+                  <button className="btn sm ghost" onClick={() => selectGroup(rows, true)}>
+                    Select all
+                  </button>
+                  <button className="btn sm ghost" onClick={() => selectGroup(rows, false)}>
+                    Clear
+                  </button>
+                </span>
+              </div>
+              {!isCollapsed && (
+                <div className="tablewrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th style={{ width: 32 }}></th>
+                        <th>Model</th>
+                        <th>Route</th>
+                        <th className="num">$in/M</th>
+                        <th>Connectivity</th>
+                        <th>Enabled</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((m) => {
+                        const readiness = modelReadiness(m);
+                        return (
+                          <tr key={m.id} style={{ opacity: m.enabled ? 1 : 0.65 }}>
+                            <td>
+                              <input type="checkbox" checked={selectedModels.has(m.alias)} onChange={() => toggleModel(m.alias)} />
+                            </td>
+                            <td>
+                              <div className="mono" style={{ fontWeight: 600 }}>
+                                {m.alias}
+                              </div>
+                              <div style={{ fontSize: 11, color: "var(--muted)" }}>{m.model}</div>
+                            </td>
+                            <td style={{ fontSize: 12.5 }}>{m.route}</td>
+                            <td className="num">{m.price_input_per_mtok != null ? `$${m.price_input_per_mtok.toFixed(3)}` : "—"}</td>
+                            <td>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span className={`pill ${readiness.cls}`} title={m.verified_message ?? undefined}>
+                                  <span className="d" />
+                                  {readiness.label}
+                                </span>
+                                {m.is_ready && (
+                                  <button
+                                    className="iconbtn"
+                                    title="Verify connectivity"
+                                    onClick={() => verifyOne(m.id, m.alias)}
+                                    disabled={verifyingIds.has(m.id)}
+                                  >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <path d="M21 12a9 9 0 11-3-6.7M21 3v6h-6" />
+                                    </svg>
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                            <td>
+                              <label className="switch">
+                                <input type="checkbox" checked={m.enabled} onChange={(e) => toggleEnabled(m.id, e.target.checked)} />
+                                <span className="track" />
+                                <span className="knob" />
+                              </label>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <div className="panel">
