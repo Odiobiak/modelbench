@@ -93,10 +93,12 @@ models:
     enabled: false
 
 
-  # ── direct: every currently-callable OpenAI chat model (pre-GPT-5 payload shape) ──
-  # GPT-5-generation models (gpt-5*, gpt-6-astra, o-series) need max_completion_tokens
-  # instead of max_tokens; bench/client.py doesn't send that yet, so they 400 here.
-  # They still work fine via the openrouter route above, which normalises this.
+  # ── direct: every currently-callable OpenAI chat model ─────────────
+  # GPT-5+-generation models (gpt-5*, gpt-6-astra, o-series) reject `max_tokens`
+  # and want `max_completion_tokens` instead. bench/client.py handles this without
+  # any per-model config here: on the first 400 mentioning both param names it
+  # retries the same attempt with the corrected key and remembers that model id
+  # for the rest of the run (see MeasuredClient._needs_max_completion_tokens).
   - id: oai-gpt-3.5-turbo
     model: gpt-3.5-turbo
     route: direct

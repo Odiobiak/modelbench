@@ -10,6 +10,8 @@ import type {
   DiscoverRequest,
   EstimateOut,
   EstimateRequest,
+  ExplorerCaseRow,
+  ExplorerSummaryOut,
   ModelIn,
   ModelOut,
   ModelUpdate,
@@ -227,6 +229,39 @@ export function useDashboard(models?: string[]) {
   return useQuery({
     queryKey: ["dashboard", models ?? null],
     queryFn: () => api.get<DashboardOut>(`/dashboard${qs}`),
+    retry: false,
+  });
+}
+
+// ── explorer ────────────────────────────────────────────────────────────
+export interface ExplorerScope {
+  runIds?: string[];
+  modelIds?: string[];
+  packs?: string[];
+}
+
+function explorerQuery(scope: ExplorerScope): string {
+  const q = new URLSearchParams();
+  if (scope.runIds?.length) q.set("run_ids", scope.runIds.join(","));
+  if (scope.modelIds?.length) q.set("model_ids", scope.modelIds.join(","));
+  if (scope.packs?.length) q.set("packs", scope.packs.join(","));
+  const s = q.toString();
+  return s ? `?${s}` : "";
+}
+
+export function useExplorerSummary(scope: ExplorerScope) {
+  return useQuery({
+    queryKey: ["explorer-summary", scope],
+    queryFn: () => api.get<ExplorerSummaryOut>(`/explorer/summary${explorerQuery(scope)}`),
+    retry: false,
+  });
+}
+
+export function useExplorerRows(scope: ExplorerScope, enabled: boolean) {
+  return useQuery({
+    queryKey: ["explorer-rows", scope],
+    queryFn: () => api.get<ExplorerCaseRow[]>(`/explorer/rows${explorerQuery(scope)}`),
+    enabled,
     retry: false,
   });
 }

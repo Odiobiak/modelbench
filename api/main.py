@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import config
-from .routers import dashboard, models, runs, settings, suites
+from .routers import dashboard, explorer, models, runs, settings, suites
 
 app = FastAPI(title="modelbench API")
 
@@ -21,6 +21,7 @@ app.include_router(settings.router)
 app.include_router(suites.router)
 app.include_router(runs.router)
 app.include_router(dashboard.router)
+app.include_router(explorer.router)
 
 
 @app.get("/health")

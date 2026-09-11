@@ -8,6 +8,7 @@ import LaunchPage from "./pages/LaunchPage";
 import RunsPage from "./pages/RunsPage";
 import RunDetailPage from "./pages/RunDetailPage";
 import RunComparePage from "./pages/RunComparePage";
+import ExplorerPage from "./pages/ExplorerPage";
 import DashboardPage from "./pages/DashboardPage";
 import SettingsPage from "./pages/SettingsPage";
 import { usePacks, useModels, useRuns } from "./api/hooks";
@@ -123,6 +124,16 @@ export default function App() {
               </svg>
             }
           />
+          <NavItem
+            to="/explorer"
+            label="Explorer"
+            icon={
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <circle cx="11" cy="11" r="7" />
+                <path d="M21 21l-4.3-4.3" />
+              </svg>
+            }
+          />
           <span className="navlabel">Config</span>
           <NavItem
             to="/settings"
@@ -166,6 +177,7 @@ export default function App() {
           <Route path="/runs" element={<RunsPage />} />
           <Route path="/runs/compare" element={<RunComparePage />} />
           <Route path="/runs/:runId" element={<RunDetailPage />} />
+          <Route path="/explorer" element={<ExplorerPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>

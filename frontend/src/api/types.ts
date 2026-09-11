@@ -356,6 +356,71 @@ export interface MatrixRow {
   cells: (number | null)[];
 }
 
+// ── explorer ────────────────────────────────────────────────────────────
+
+export interface ExplorerCriterionDef {
+  key: string;
+  label: string;
+  packs: string[];
+  description: string;
+}
+
+// One (run, model) row: every RunSummaryRow field plus every criterion key
+// from ExplorerCriterionDef -- read those dynamically (as in RunComparePage's
+// METRICS lookup) since the set of criteria is server-defined, not fixed here.
+export interface ExplorerSummaryRow extends RunSummaryRow {
+  run_id: string;
+  run_started_at: string;
+  overall_pass_rate: number | null;
+  chain_reliability: number | null;
+}
+
+export interface ExplorerSummaryOut {
+  rows: ExplorerSummaryRow[];
+  criteria: ExplorerCriterionDef[];
+  available: { run_ids: string[]; model_ids: string[]; packs: string[] };
+}
+
+export interface ExplorerCaseRow {
+  run_id: string;
+  record_id: string;
+  case_key: string;
+  pack: string;
+  model_alias: string;
+  repeat_index: number;
+  ok: boolean;
+  passed: boolean | null;
+  error_type: string;
+  response_text: string;
+  finish_reason: string;
+  ttft_ms: number | null;
+  total_latency_ms: number | null;
+  tpot_ms: number | null;
+  tokens_per_second: number | null;
+  ts_utc: string;
+  tags: string;
+  difficulty: string;
+  vendor: string;
+  model_served: string;
+  prompt_tokens: number | null;
+  cached_prompt_tokens: number | null;
+  completion_tokens: number | null;
+  reasoning_tokens: number | null;
+  total_tokens: number | null;
+  cache_hit_ratio: number | null;
+  cost_input_usd: number | null;
+  cost_cached_usd: number | null;
+  cost_output_usd: number | null;
+  cost_total_usd: number | null;
+  cost_source: string;
+  retry_count: number;
+  rate_limited: boolean;
+  error_message: string;
+  judge_model: string;
+  scores_json: string;
+  failed_assertions: string;
+}
+
 export interface DashboardOut {
   meta: {
     calls: number;
