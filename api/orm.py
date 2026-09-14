@@ -30,6 +30,7 @@ class BenchModel(Base):
     region: Mapped[str] = mapped_column(String, nullable=False, default="")
     deployment_type: Mapped[str] = mapped_column(String, nullable=False, default="")
     temperature: Mapped[float] = mapped_column(Numeric, nullable=False, default=0.2)
+    send_temperature: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     top_p: Mapped[float | None] = mapped_column(Numeric, nullable=True)
     max_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=1024)
     seed: Mapped[int | None] = mapped_column(Integer, nullable=True)

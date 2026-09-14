@@ -116,6 +116,7 @@ export default function DiscoverModelsDrawer({ open, onClose }: { open: boolean;
       aws_secret_access_key_env: preset.key === "bedrock" ? bedrockSecretKeyEnv : "",
       aws_session_token_env: "",
       temperature: 0.2,
+      send_temperature: true,
       top_p: null,
       max_tokens: 1024,
       seed: null,

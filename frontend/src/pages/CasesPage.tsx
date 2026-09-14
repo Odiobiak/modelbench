@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Drawer from "../components/Drawer";
 import RunLauncherPanel from "../components/RunLauncherPanel";
+import CollapsiblePanel from "../components/CollapsiblePanel";
 import { useAddCase, useAllCases, useCases, useDeleteCase, usePacks } from "../api/hooks";
 import type { AssertionOut, CaseCheck, CaseOut, CaseTurn, CheckType, JudgeCriterion } from "../api/types";
 import { toast } from "../toast";
@@ -68,6 +69,98 @@ function assertionToCheck(a: AssertionOut): CaseCheck {
 // single-selection state instead of a separate view-mode flag.
 const ALL_PACKS = "__all__";
 
+// The taxonomy every pack in suites/ is organized around -- not a list of
+// packs, a list of orthogonal ways a model can fail. A suite is
+// "comprehensive" when every row here has real coverage, not when the case
+// count is large; a model can clear a huge pile of cases that all test the
+// same failure mode and still be unsafe in production the first time a
+// different one shows up. This is shown to explain the categorization, not
+// computed from it -- if a new pack is added, add its name to the right
+// bucket here too.
+interface PackCategory {
+  key: string;
+  title: string;
+  why: string;
+  standard?: string;
+  packs: string[];
+}
+
+const PACK_CATEGORIES: PackCategory[] = [
+  {
+    key: "capability",
+    title: "Capability",
+    why: "The baseline question before anything else matters: can it actually perform the task, in the format asked, using the right tool.",
+    standard: "10, 11, and 12 are direct ports of published academic benchmarks (MMLU, TruthfulQA, IFEval) -- the same evals cited in most model release cards, so a result here is comparable to numbers reported elsewhere, not just internally.",
+    packs: ["01_instruction_following", "02_tool_calling", "10_knowledge_mmlu", "11_truthfulqa_myths", "12_ifeval_constraints"],
+  },
+  {
+    key: "honesty",
+    title: "Groundedness",
+    why: "A model that's fluent but wrong is worse than one that admits it doesn't know. Each pack includes an answerable-control case so a model that refuses everything can't ace this by never committing to an answer.",
+    packs: ["03_grounding_rag", "04_hallucination"],
+  },
+  {
+    key: "robustness",
+    title: "Robustness",
+    why: "The same request said cleanly, with typos, through ASR noise, or buried in a long document. Production traffic never arrives as cleanly as a demo prompt.",
+    packs: ["08_robustness", "09_long_context"],
+  },
+  {
+    key: "attack",
+    title: "Attack Resistance",
+    why: "Hostile instructions arriving inside retrieved content -- a knowledge-base article, a CRM note -- that the user never typed. Not \"can I make it say something rude,\" but can someone else hijack it through your own data. Includes a benign-control case so over-refusal doesn't masquerade as safety.",
+    packs: ["07_safety_injection"],
+  },
+  {
+    key: "handoff",
+    title: "Escalation",
+    why: "Scored as precision and recall together, never just \"did it escalate.\" A model that hands off at the first sign of friction looks safe on this pack alone and is a containment-rate disaster in production.",
+    packs: ["06_escalation"],
+  },
+  {
+    key: "economics",
+    title: "Cost & Reliability",
+    why: "Latency, tokens, cost, and reliability (retries, rate-limits, errors) are captured on every call in every pack, not just this one -- a model that's more accurate but three times the cost or twice the latency isn't automatically the right call.",
+    packs: ["00_latency_probe"],
+  },
+  {
+    key: "vertical",
+    title: "Vertical Fit",
+    why: "Generic benchmarks show how a model performs in a lab. These test the specific failure modes of one real use case -- a Cognigy AI Agent's transfer-to-live-agent tool, a bank's auth-gating requirement, a retailer's discount policy.",
+    packs: [
+      "13_vertical_banking",
+      "14_vertical_healthcare",
+      "15_vertical_insurance",
+      "16_vertical_telecom",
+      "17_vertical_retail",
+      "18_vertical_cognigy_agent",
+    ],
+  },
+];
+
+// Categories are stored as ordinary tags with a reserved prefix -- no schema
+// change needed, since `tags` already round-trips through the YAML packs,
+// the DB-backed packs, and every existing form on this page. A case can
+// carry more than one (a case can legitimately test two things at once), and
+// a case with none falls back to its pack's own category everywhere below.
+const CATEGORY_TAG_PREFIX = "category:";
+const categoryTag = (key: string) => `${CATEGORY_TAG_PREFIX}${key}`;
+const categoryKeysOf = (tags: string[]) =>
+  tags.filter((t) => t.startsWith(CATEGORY_TAG_PREFIX)).map((t) => t.slice(CATEGORY_TAG_PREFIX.length));
+const plainTagsOf = (tags: string[]) => tags.filter((t) => !t.startsWith(CATEGORY_TAG_PREFIX));
+
+// A case's real categories: whatever it's explicitly tagged with, or -- if
+// it's never been tagged (every pre-existing case, an HF import, anything
+// added before this existed) -- its pack's own category, so nothing in the
+// list ever shows up uncategorized.
+function categoriesOf(c: Pick<CaseOut, "tags" | "pack">): { categories: PackCategory[]; explicit: boolean } {
+  const explicitKeys = categoryKeysOf(c.tags);
+  if (explicitKeys.length > 0) {
+    return { categories: PACK_CATEGORIES.filter((cat) => explicitKeys.includes(cat.key)), explicit: true };
+  }
+  return { categories: PACK_CATEGORIES.filter((cat) => cat.packs.includes(c.pack)), explicit: false };
+}
+
 export default function CasesPage() {
   const { data: packs } = usePacks();
   const [currentPack, setCurrentPack] = useState<string | null>(null);
@@ -109,6 +202,7 @@ export default function CasesPage() {
   const [caseSearch, setCaseSearch] = useState("");
   const [difficultyFilter, setDifficultyFilter] = useState<"all" | "easy" | "medium" | "hard">("all");
   const [tagFilter, setTagFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [packFilter, setPackFilter] = useState("all");
   const [sortKey, setSortKey] = useState<"case_key" | "difficulty" | "created_at" | "pack">("case_key");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -117,9 +211,19 @@ export default function CasesPage() {
     setDifficultyFilter("all");
     setTagFilter("all");
     setPackFilter("all");
+    // categoryFilter deliberately NOT reset here -- it's a cross-pack concept
+    // (a category can span several packs), and "Show only these cases" in
+    // the Details section above switches to All packs *and* sets this filter
+    // in the same action, which this effect would otherwise immediately undo.
   }, [currentPack]);
 
-  const availableTags = useMemo(() => Array.from(new Set((cases ?? []).flatMap((c) => c.tags))).sort(), [cases]);
+  // Category tags are a reserved namespace -- excluded from the plain "Any
+  // tag" list (they get their own filter below) so that list never shows a
+  // raw "category:capability" string.
+  const availableTags = useMemo(
+    () => Array.from(new Set((cases ?? []).flatMap((c) => plainTagsOf(c.tags)))).sort(),
+    [cases]
+  );
   const availablePacks = useMemo(() => Array.from(new Set((cases ?? []).map((c) => c.pack))).sort(), [cases]);
 
   const visibleCases = useMemo(() => {
@@ -135,6 +239,9 @@ export default function CasesPage() {
     }
     if (difficultyFilter !== "all") rows = rows.filter((c) => c.difficulty === difficultyFilter);
     if (tagFilter !== "all") rows = rows.filter((c) => c.tags.includes(tagFilter));
+    if (categoryFilter !== "all") {
+      rows = rows.filter((c) => categoriesOf(c).categories.some((cat) => cat.key === categoryFilter));
+    }
     if (isAllPacks && packFilter !== "all") rows = rows.filter((c) => c.pack === packFilter);
     const DIFFICULTY_RANK: Record<string, number> = { easy: 0, medium: 1, hard: 2 };
     const sorted = [...rows].sort((a, b) => {
@@ -156,7 +263,7 @@ export default function CasesPage() {
     });
     if (sortDir === "desc") sorted.reverse();
     return sorted;
-  }, [cases, caseSearch, difficultyFilter, tagFilter, packFilter, isAllPacks, sortKey, sortDir]);
+  }, [cases, caseSearch, difficultyFilter, tagFilter, categoryFilter, packFilter, isAllPacks, sortKey, sortDir]);
 
   function toggleSort(key: typeof sortKey) {
     if (sortKey === key) setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -176,6 +283,16 @@ export default function CasesPage() {
   const [system, setSystem] = useState("");
   const [checks, setChecks] = useState<CaseCheck[]>([]);
   const [judgeCriteria, setJudgeCriteria] = useState<JudgeCriterion[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
+
+  function toggleCategory(key: string) {
+    setSelectedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   function openDrawer() {
     setPack((!isAllPacks && currentPack) || packs?.[0]?.name || "");
@@ -187,6 +304,7 @@ export default function CasesPage() {
     setSystem("");
     setChecks([]);
     setJudgeCriteria([]);
+    setSelectedCategories(new Set());
     setOpen(true);
   }
 
@@ -198,7 +316,8 @@ export default function CasesPage() {
     setNewPack("");
     setTurns(c.messages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })));
     setCaseKey("");
-    setTags(c.tags.join(", "));
+    setTags(plainTagsOf(c.tags).join(", "));
+    setSelectedCategories(new Set(categoryKeysOf(c.tags)));
     setDifficulty(c.difficulty as "easy" | "medium" | "hard");
     setSystem(c.system ?? "");
     setChecks(c.assertions.map(assertionToCheck));
@@ -260,10 +379,10 @@ export default function CasesPage() {
           case_key: caseKey.trim() || undefined,
           turns,
           system: system.trim() || undefined,
-          tags: tags
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean),
+          tags: [
+            ...tags.split(",").map((s) => s.trim()).filter(Boolean),
+            ...Array.from(selectedCategories).map(categoryTag),
+          ],
           difficulty,
           checks,
           judge_criteria: validCriteria,
@@ -310,6 +429,22 @@ export default function CasesPage() {
           Add test case
         </button>
       </div>
+
+      <div className="content" style={{ paddingBottom: 0 }}>
+        <CategoryDetails
+          onJumpToPack={(p) => {
+            setCategoryFilter("all");
+            setCurrentPack(p);
+          }}
+          activePack={isAllPacks ? null : currentPack}
+          onFilterCategory={(key) => {
+            setCurrentPack(ALL_PACKS);
+            setCategoryFilter(key);
+          }}
+          activeCategory={categoryFilter}
+        />
+      </div>
+
       <div className="content cases-layout">
         <div className="panel pack-sidebar">
           <div className="panel-head">
@@ -399,6 +534,14 @@ export default function CasesPage() {
               <option value="medium">Medium</option>
               <option value="hard">Hard</option>
             </select>
+            <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} style={{ width: "auto" }}>
+              <option value="all">Any category</option>
+              {PACK_CATEGORIES.map((cat) => (
+                <option key={cat.key} value={cat.key}>
+                  {cat.title}
+                </option>
+              ))}
+            </select>
             {availableTags.length > 0 && (
               <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} style={{ width: "auto" }}>
                 <option value="all">Any tag</option>
@@ -448,6 +591,7 @@ export default function CasesPage() {
           <div className="caselist">
             {visibleCases.map((c) => {
               const preview = c.messages.map((m) => m.content).join("  ·  ");
+              const { categories } = categoriesOf(c);
               return (
                 <div className="caserow" key={c.id}>
                   <input
@@ -468,7 +612,17 @@ export default function CasesPage() {
                       <span className="tag" style={{ textTransform: "capitalize" }}>
                         {c.difficulty}
                       </span>
-                      {c.tags.map((t) => (
+                      {categories.map((cat) => (
+                        <span
+                          className="tag"
+                          key={cat.key}
+                          title={cat.why}
+                          style={{ background: "var(--accent-wash)", color: "var(--accent)" }}
+                        >
+                          {cat.title}
+                        </span>
+                      ))}
+                      {plainTagsOf(c.tags).map((t) => (
                         <span className="tag" key={t}>
                           {t}
                         </span>
@@ -552,6 +706,37 @@ export default function CasesPage() {
         <div className="field">
           <label>Tags</label>
           <input type="text" value={tags} placeholder="format, voice, billing" onChange={(e) => setTags(e.target.value)} />
+        </div>
+
+        <div className="field">
+          <span className="section-label">Category</span>
+          <p className="hint" style={{ margin: "0 0 8px" }}>
+            Which of the ways a model can fail does this case actually test? Pick as many as apply -- shown in this
+            case's own Details later, and used to filter the list.
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {PACK_CATEGORIES.map((cat) => {
+              const active = selectedCategories.has(cat.key);
+              return (
+                <button
+                  key={cat.key}
+                  type="button"
+                  className="tag"
+                  style={{
+                    cursor: "pointer",
+                    border: "1px solid var(--line-strong)",
+                    fontWeight: active ? 700 : 400,
+                    background: active ? "var(--accent-wash)" : undefined,
+                    color: active ? "var(--accent)" : undefined,
+                  }}
+                  title={cat.why}
+                  onClick={() => toggleCategory(cat.key)}
+                >
+                  {cat.title}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="field">
@@ -682,11 +867,38 @@ export default function CasesPage() {
                 <span className="mono">{viewingCase.pack}</span> · <span style={{ textTransform: "capitalize" }}>{viewingCase.difficulty}</span>
               </p>
             </div>
-            {viewingCase.tags.length > 0 && (
+
+            <details className="adv" open>
+              <summary>Details — what this case is categorically testing</summary>
+              {(() => {
+                const { categories, explicit } = categoriesOf(viewingCase);
+                if (categories.length === 0) {
+                  return <p className="hint">Not categorized, and its pack isn't mapped to a category either.</p>;
+                }
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4, marginBottom: 10 }}>
+                    {categories.map((cat) => (
+                      <div key={cat.key}>
+                        <div style={{ fontWeight: 650, fontSize: 13.5 }}>{cat.title}</div>
+                        <p style={{ margin: "2px 0 0", fontSize: 12.5, color: "var(--ink-2)" }}>{cat.why}</p>
+                      </div>
+                    ))}
+                    {!explicit && (
+                      <p style={{ margin: 0, fontSize: 11.5, color: "var(--muted)", fontStyle: "italic" }}>
+                        Inferred from the {viewingCase.pack} pack — this case isn't explicitly tagged with a category.
+                        Use "Use as template" below to add one.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+            </details>
+
+            {plainTagsOf(viewingCase.tags).length > 0 && (
               <div className="field">
                 <span className="section-label">Tags</span>
                 <div>
-                  {viewingCase.tags.map((t) => (
+                  {plainTagsOf(viewingCase.tags).map((t) => (
                     <span className="tag" key={t}>
                       {t}
                     </span>
@@ -776,6 +988,86 @@ export default function CasesPage() {
 }
 
 /**
+ * Why these packs exist at all, and how they're categorized -- for someone
+ * being handed this platform as a shared test ground, not just the person
+ * who built it. Every pack in suites/ maps to exactly one row here; a new
+ * pack should be added to PACK_CATEGORIES above at the same time it's
+ * written, not left uncategorized.
+ */
+/**
+ * The page-header-level explainer: what each category name means, and which
+ * packs belong to it. Each category is its own <details> -- open one to see
+ * its packs, same click also available as a filter for the case list below
+ * via "Show only these cases".
+ */
+function CategoryDetails({
+  onJumpToPack,
+  activePack,
+  onFilterCategory,
+  activeCategory,
+}: {
+  onJumpToPack: (pack: string) => void;
+  activePack: string | null;
+  onFilterCategory: (key: string) => void;
+  activeCategory: string;
+}) {
+  return (
+    <CollapsiblePanel
+      id="cases-details"
+      title="Details"
+      sub="What each category of test case actually checks for, and which packs belong to it"
+      defaultCollapsed
+    >
+      <div style={{ padding: "4px 18px 16px" }}>
+        <p style={{ margin: "0 0 14px", fontSize: 13, color: "var(--ink-2)", maxWidth: "70ch" }}>
+          Every pack in suites/ belongs to one of these. Open a category to see its packs, or use "Show only these
+          cases" to filter the list below to it.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {PACK_CATEGORIES.map((cat) => (
+            <details key={cat.key} className="adv" style={{ margin: 0 }}>
+              <summary style={{ fontWeight: 650 }}>{cat.title}</summary>
+              <p style={{ margin: "6px 0 8px", fontSize: 12.5, color: "var(--ink-2)", maxWidth: "70ch" }}>{cat.why}</p>
+              {cat.standard && (
+                <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--muted)", fontStyle: "italic", maxWidth: "70ch" }}>
+                  {cat.standard}
+                </p>
+              )}
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+                {cat.packs.map((p) => (
+                  <button
+                    key={p}
+                    className="tag mono"
+                    style={{
+                      cursor: "pointer",
+                      border: "none",
+                      fontWeight: p === activePack ? 700 : 400,
+                      background: p === activePack ? "var(--accent-wash)" : undefined,
+                      color: p === activePack ? "var(--accent)" : undefined,
+                    }}
+                    onClick={() => onJumpToPack(p)}
+                    title={`Jump to ${p}`}
+                  >
+                    {p}
+                  </button>
+                ))}
+                <button
+                  className="btn sm ghost"
+                  style={{ marginLeft: "auto" }}
+                  onClick={() => onFilterCategory(activeCategory === cat.key ? "all" : cat.key)}
+                >
+                  {activeCategory === cat.key ? "✓ Filtering to this category" : "Show only these cases ↓"}
+                </button>
+              </div>
+            </details>
+          ))}
+        </div>
+      </div>
+    </CollapsiblePanel>
+  );
+}
+
+/**
  * A worked example, live from whatever pack is currently open, so someone
  * new to the platform sees a real prompt → real checks → pass/fail before
  * they try to build their own -- not an abstract description of the
@@ -800,13 +1092,16 @@ function ExamplePanel({ example, pack }: { example: CaseOut | null; pack: string
   const criteria = Object.entries(judgeCriteriaOf(example));
 
   return (
-    <div className="panel">
-      <div className="panel-head">
-        <h2>How a test case works</h2>
-        <span className="sub">
+    <CollapsiblePanel
+      id="cases-example"
+      title="How a test case works"
+      sub={
+        <>
           A real example from <span className="mono">{pack}</span> — click "View full case" on any row below to see one in full
-        </span>
-      </div>
+        </>
+      }
+      defaultCollapsed
+    >
       <div className="grid2" style={{ padding: "16px 18px", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)", gap: 20 }}>
         <div>
           <span className="kicker">1 · This gets sent</span>
@@ -839,6 +1134,6 @@ function ExamplePanel({ example, pack }: { example: CaseOut | null; pack: string
           </p>
         </div>
       </div>
-    </div>
+    </CollapsiblePanel>
   );
 }

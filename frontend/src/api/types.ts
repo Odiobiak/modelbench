@@ -14,6 +14,7 @@ export interface ModelIn {
   aws_secret_access_key_env: string;
   aws_session_token_env: string;
   temperature: number;
+  send_temperature: boolean;
   top_p: number | null;
   max_tokens: number;
   seed: number | null;
@@ -200,6 +201,14 @@ export interface RunCaseOut {
   judge_model: string;
   scores_json: string;
   failed_assertions: string;
+  // The judge's own call is separate, measured, billable spend -- not
+  // folded into cost_total_usd/total_latency_ms above (those describe the
+  // model under test's call).
+  judge_cost_usd: number | null;
+  judge_ttft_ms: number | null;
+  judge_total_latency_ms: number | null;
+  judge_prompt_tokens: number | null;
+  judge_completion_tokens: number | null;
 }
 
 // One row of RunResultsOut.summary -- built by bench/report.py's
@@ -230,6 +239,9 @@ export interface RunSummaryRow {
   avg_cost_usd: number | null;
   cost_per_1k_calls: number | null;
   cost_per_success: number | null;
+  judge_calls: number;
+  judge_cost_usd: number | null;
+  avg_judge_latency_ms: number | null;
   [pack: `pack.${string}`]: unknown;
 }
 
@@ -419,6 +431,13 @@ export interface ExplorerCaseRow {
   judge_model: string;
   scores_json: string;
   failed_assertions: string;
+  // Absent (not just null) on a run predating these columns -- see
+  // api/routers/explorer.py's CASE_COLUMNS filtering.
+  judge_cost_usd?: number | null;
+  judge_ttft_ms?: number | null;
+  judge_total_latency_ms?: number | null;
+  judge_prompt_tokens?: number | null;
+  judge_completion_tokens?: number | null;
 }
 
 export interface DashboardOut {

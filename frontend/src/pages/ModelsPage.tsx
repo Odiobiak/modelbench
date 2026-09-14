@@ -36,6 +36,7 @@ const BLANK: ModelIn = {
   aws_secret_access_key_env: "",
   aws_session_token_env: "",
   temperature: 0.2,
+  send_temperature: true,
   top_p: null,
   max_tokens: 1024,
   seed: null,
@@ -158,6 +159,7 @@ export default function ModelsPage() {
       aws_secret_access_key_env: m.aws_secret_access_key_env,
       aws_session_token_env: m.aws_session_token_env,
       temperature: m.temperature,
+      send_temperature: m.send_temperature,
       top_p: m.top_p,
       max_tokens: m.max_tokens,
       seed: m.seed,
@@ -608,13 +610,30 @@ export default function ModelsPage() {
         </div>
         <div className="grid2">
           <div className="field">
-            <label>Temperature</label>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <label style={{ margin: 0 }}>Temperature</label>
+              <label className="switch" title={form.send_temperature ? "Sent on every call" : "Never sent -- this model rejects it"}>
+                <input
+                  type="checkbox"
+                  checked={form.send_temperature}
+                  onChange={(e) => setForm({ ...form, send_temperature: e.target.checked })}
+                />
+                <span className="track" />
+                <span className="knob" />
+              </label>
+            </div>
             <input
               type="number"
               step={0.1}
               value={form.temperature}
+              disabled={!form.send_temperature}
               onChange={(e) => setForm({ ...form, temperature: Number(e.target.value) })}
             />
+            <span className="hint">
+              {form.send_temperature
+                ? "Sent as-is on every call."
+                : "Off for a model that rejects the parameter outright (some reasoning-tier models do) -- also learned automatically the first time a call fails because of it."}
+            </span>
           </div>
           <div className="field">
             <label>Max tokens</label>

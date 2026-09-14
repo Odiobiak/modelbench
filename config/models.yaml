@@ -19,6 +19,12 @@ defaults:
   temperature: 0.2          # test at what you deploy at, not 0
   max_tokens: 1024
   timeout_s: 120
+  # send_temperature: false   # per-model override -- some newer reasoning-
+  #                           # tier models reject `temperature` outright.
+  #                           # Also learned automatically on the first 400
+  #                           # that says so; set this only to skip that
+  #                           # first failed call for a model you already
+  #                           # know rejects it.
 
 models:
 

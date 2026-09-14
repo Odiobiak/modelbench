@@ -31,6 +31,31 @@ _CATALOGUE_CACHE: dict[str, Any] = {}
 _CATALOGUE_FETCHED_AT: float = 0.0
 _CATALOGUE_TTL_S = 3600
 
+DIRECT_PRICING_YAML = "config/direct_pricing.yaml"
+_DIRECT_PRICING_CACHE: dict[str, dict[str, float]] | None = None
+
+
+def _load_direct_pricing(path: str = DIRECT_PRICING_YAML) -> dict[str, dict[str, float]]:
+    """Fallback pricing for routes with no catalogue API (anthropic, direct,
+    bedrock) -- see config/direct_pricing.yaml's header for why this exists.
+    Flattened to {model_slug: {input, output}} regardless of the file's
+    per-vendor grouping, since lookup is by the exact model slug only,
+    same key OpenRouter's catalogue uses."""
+    global _DIRECT_PRICING_CACHE
+    if _DIRECT_PRICING_CACHE is not None:
+        return _DIRECT_PRICING_CACHE
+    try:
+        with open(path) as fh:
+            raw = yaml.safe_load(fh) or {}
+        flat: dict[str, dict[str, float]] = {}
+        for vendor_block in raw.values():
+            if isinstance(vendor_block, dict):
+                flat.update(vendor_block)
+        _DIRECT_PRICING_CACHE = flat
+    except FileNotFoundError:
+        _DIRECT_PRICING_CACHE = {}
+    return _DIRECT_PRICING_CACHE
+
 # Modality words, not naming conventions: a raw provider catalogue mixes text
 # chat models in with audio/image/video/embedding/moderation endpoints that
 # don't speak this harness's chat-completions request shape at all. This is
@@ -81,6 +106,14 @@ class ModelSpec:
 
     # request params
     temperature: float = 0.2
+    # Newer models on some providers (observed on Anthropic's anthropic-route
+    # API; OpenAI's reasoning-tier models do the same) reject `temperature`
+    # outright rather than just ignoring it -- bench/client.py also learns
+    # this reactively per model id on the first such 400 (see
+    # MeasuredClient._omit_temperature), but this lets it be set up front for
+    # a model you already know rejects it, instead of paying for one failed
+    # call per run to find out.
+    send_temperature: bool = True
     top_p: float | None = None
     max_tokens: int = 1024
     seed: int | None = None
@@ -168,6 +201,12 @@ def _enrich(spec: ModelSpec, catalogue: dict[str, Any]) -> ModelSpec:
             spec.vendor = spec.vendor or (spec.model.split("/")[0] if "/" in spec.model else "unknown")
         spec.canonical_id = spec.model
         spec.model_family = spec.model.split("/")[-1].rsplit("-", 1)[0]
+
+        priced = _load_direct_pricing().get(spec.model)
+        if priced:
+            spec.price_input_per_mtok = priced.get("input")
+            spec.price_output_per_mtok = priced.get("output")
+            spec.pricing_captured_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         return spec
 
     pricing = entry.get("pricing", {}) or {}
@@ -224,6 +263,7 @@ def load_registry(
             aws_secret_access_key_env=merged.get("aws_secret_access_key_env", ""),
             aws_session_token_env=merged.get("aws_session_token_env", ""),
             temperature=merged.get("temperature", 0.2),
+            send_temperature=merged.get("send_temperature", True),
             top_p=merged.get("top_p"),
             max_tokens=merged.get("max_tokens", 1024),
             seed=merged.get("seed"),

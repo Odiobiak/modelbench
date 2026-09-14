@@ -31,6 +31,7 @@ class ModelIn(BaseModel):
     aws_secret_access_key_env: str = Field("", description="route=bedrock only, e.g. 'AWS_SECRET_ACCESS_KEY'")
     aws_session_token_env: str = Field("", description="route=bedrock only, optional -- blank if no session token")
     temperature: float = 0.2
+    send_temperature: bool = Field(True, description="Off for a model that rejects the temperature parameter outright (some newer reasoning-tier models do)")
     top_p: float | None = None
     max_tokens: int = 1024
     seed: int | None = None
@@ -77,6 +78,7 @@ class ModelUpdate(BaseModel):
     aws_secret_access_key_env: str | None = None
     aws_session_token_env: str | None = None
     temperature: float | None = None
+    send_temperature: bool | None = None
     top_p: float | None = None
     max_tokens: int | None = None
     seed: int | None = None
@@ -323,6 +325,15 @@ class RunCaseOut(BaseModel):
     judge_model: str = ""
     scores_json: str = "{}"
     failed_assertions: str = ""
+    # The judge's own call is a separate measured, billable call -- see
+    # bench/schema.py's judge_cost_usd for why it isn't folded into
+    # cost_total_usd/total_latency_ms above (those describe the model
+    # under test's call).
+    judge_cost_usd: float | None = None
+    judge_ttft_ms: float | None = None
+    judge_total_latency_ms: float | None = None
+    judge_prompt_tokens: int | None = None
+    judge_completion_tokens: int | None = None
 
 
 class CaseOverrideIn(BaseModel):

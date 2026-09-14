@@ -39,6 +39,17 @@ def _is_max_tokens_param_error(rec: RunRecord) -> bool:
     return "max_tokens" in msg and "max_completion_tokens" in msg
 
 
+def _is_temperature_param_error(rec: RunRecord) -> bool:
+    """True when a provider rejects `temperature` outright rather than just
+    ignoring it, e.g. Anthropic's '`temperature` is deprecated for this
+    model.' -- observed on newer reasoning-tier models across providers, not
+    an Anthropic-only quirk."""
+    if rec.http_status != 400:
+        return False
+    msg = (rec.error_message or "").lower()
+    return "temperature" in msg and ("deprecated" in msg or "not supported" in msg or "unsupported" in msg)
+
+
 class MeasuredClient:
     def __init__(self, *, retry_attempts: int = 2, retry_backoff_s: float = 2.0,
                  mock: bool = False):
@@ -53,6 +64,11 @@ class MeasuredClient:
         # matched by name, so the next model generation with the same
         # quirk doesn't need a code change here.
         self._needs_max_completion_tokens: set[str] = set()
+        # Same idea, for models that reject `temperature` outright (see
+        # _is_temperature_param_error). A model can also be pre-flagged via
+        # ModelSpec.send_temperature=False in the registry, checked alongside
+        # this set everywhere temperature is added to a request payload.
+        self._omit_temperature: set[str] = set()
 
     async def __aenter__(self):
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=15.0))
@@ -92,6 +108,7 @@ class MeasuredClient:
         attempt = 0
         retry_started = time.perf_counter()
         swapped_tokens_key = False
+        dropped_temperature = False
         while attempt <= self.retry_attempts:
             try:
                 await self._stream_once(rec, spec, messages, tools,
@@ -114,6 +131,13 @@ class MeasuredClient:
                     # retried this call".
                     swapped_tokens_key = True
                     self._needs_max_completion_tokens.add(spec.id)
+                    continue
+                if not dropped_temperature and _is_temperature_param_error(rec):
+                    # Same shape as the max_tokens swap above -- retry the
+                    # same attempt with temperature omitted, same
+                    # local-flag-vs-shared-set reasoning.
+                    dropped_temperature = True
+                    self._omit_temperature.add(spec.id)
                     continue
                 # 429 and 5xx are worth retrying; 4xx is not
                 if rec.http_status and rec.http_status < 500 and rec.http_status != 429:
@@ -177,7 +201,10 @@ class MeasuredClient:
             tags=",".join(spec.tags),
             # Only a direct vendor call yields latency you may quote as absolute.
             latency_authoritative=(spec.route in ("direct", "bedrock", "anthropic")),
-            temperature=spec.temperature,
+            # None (not spec.temperature) when the model is configured not to
+            # take it at all -- this column should reflect what a row's call
+            # actually used, not a value that was silently never sent.
+            temperature=spec.temperature if spec.send_temperature else None,
             top_p=spec.top_p,
             max_tokens_requested=max_tokens or spec.max_tokens,
             seed=spec.seed,
@@ -251,8 +278,9 @@ class MeasuredClient:
                 else:
                     bedrock_messages.append({"role": m["role"], "content": [{"text": content}]})
 
-            inference_config: dict[str, Any] = {"maxTokens": max_tokens or spec.max_tokens,
-                                                 "temperature": spec.temperature}
+            inference_config: dict[str, Any] = {"maxTokens": max_tokens or spec.max_tokens}
+            if spec.send_temperature and spec.id not in self._omit_temperature:
+                inference_config["temperature"] = spec.temperature
             if spec.top_p is not None:
                 inference_config["topP"] = spec.top_p
 
@@ -306,6 +334,7 @@ class MeasuredClient:
                                   max_tokens: int | None) -> RunRecord:
         attempt = 0
         retry_started = time.perf_counter()
+        dropped_temperature = False
         while attempt <= self.retry_attempts:
             try:
                 await self._anthropic_once(rec, spec, messages, tools, max_tokens)
@@ -315,6 +344,14 @@ class MeasuredClient:
                         rec.queue_or_retry_ms = (time.perf_counter() - retry_started) * 1000
                     self._compute_cost(rec, spec)
                     return rec
+                if not dropped_temperature and _is_temperature_param_error(rec):
+                    # Same self-healing shape as _stream_once's max_tokens ->
+                    # max_completion_tokens swap -- retry the same attempt
+                    # with temperature omitted, no backoff, and remember the
+                    # model id for the rest of the run.
+                    dropped_temperature = True
+                    self._omit_temperature.add(spec.id)
+                    continue
                 # 429 and 5xx are worth retrying; 4xx is not.
                 if rec.http_status and rec.http_status < 500 and rec.http_status != 429:
                     break
@@ -352,9 +389,10 @@ class MeasuredClient:
             "model": spec.model,
             "messages": convo,
             "max_tokens": max_tokens or spec.max_tokens,
-            "temperature": spec.temperature,
             "stream": True,
         }
+        if spec.send_temperature and spec.id not in self._omit_temperature:
+            payload["temperature"] = spec.temperature
         if system:
             payload["system"] = system
         if spec.top_p is not None:
@@ -498,12 +536,13 @@ class MeasuredClient:
         payload: dict[str, Any] = {
             "model": spec.model,
             "messages": messages,
-            "temperature": spec.temperature,
             tokens_key: max_tokens or spec.max_tokens,
             "stream": True,
             # Ask the gateway to include usage in the final stream chunk.
             "stream_options": {"include_usage": True},
         }
+        if spec.send_temperature and spec.id not in self._omit_temperature:
+            payload["temperature"] = spec.temperature
         if spec.top_p is not None:
             payload["top_p"] = spec.top_p
         if spec.seed is not None:

@@ -60,6 +60,7 @@ async def load_registry_from_db(
             aws_secret_access_key_env=row.aws_secret_access_key_env,
             aws_session_token_env=row.aws_session_token_env,
             temperature=float(row.temperature),
+            send_temperature=bool(row.send_temperature),
             top_p=float(row.top_p) if row.top_p is not None else None,
             max_tokens=row.max_tokens,
             seed=row.seed,
