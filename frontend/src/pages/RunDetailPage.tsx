@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useQueries } from "@tanstack/react-query";
 import { diffWords } from "diff";
 import Drawer from "../components/Drawer";
 import RunSummaryCharts from "../components/RunSummaryCharts";
+import CollapsiblePanel from "../components/CollapsiblePanel";
 import {
   useClearCaseOverride,
   useRun,
@@ -11,10 +13,10 @@ import {
   useSetCaseOverride,
   useUpdateRunAnnotation,
 } from "../api/hooks";
+import { api, ApiError } from "../api/client";
 import { fmtDate, fmtMoney } from "../format";
 import { toast } from "../toast";
-import { ApiError } from "../api/client";
-import type { RunCaseOut, RunSummaryRow } from "../api/types";
+import type { CaseOut, RunCaseOut, RunSummaryRow } from "../api/types";
 
 // scores_json/failed_assertions are stored as strings on the wire (parquet
 // columns, not nested JSON) -- parsed defensively since a hand-edited or
@@ -132,6 +134,23 @@ export default function RunDetailPage() {
   const packs = useMemo(() => Array.from(new Set(cases?.map((c) => c.pack) ?? [])), [cases]);
   const models = useMemo(() => Array.from(new Set(cases?.map((c) => c.model_alias) ?? [])), [cases]);
 
+  // The run's own parquet rows only carry the model's response, not what was
+  // actually sent -- the prompt lives on the test case itself (see
+  // bench/schema.py: only a hash of the system prompt is stored per-row, to
+  // keep rows small). Pulled per pack, keyed the same as useCases(pack)'s
+  // query key so a Test Cases page visit for the same pack is an instant
+  // cache hit here.
+  const caseDefQueries = useQueries({
+    queries: packs.map((p) => ({
+      queryKey: ["cases", p],
+      queryFn: () => api.get<CaseOut[]>(`/packs/${p}/cases`),
+    })),
+  });
+  const caseDefByKey = new Map<string, CaseOut>();
+  for (const q of caseDefQueries) {
+    for (const c of q.data ?? []) caseDefByKey.set(`${c.pack}::${c.case_key}`, c);
+  }
+
   const filtered = useMemo(() => {
     let rows = cases ?? [];
     if (packFilter) rows = rows.filter((r) => r.pack === packFilter);
@@ -237,16 +256,25 @@ export default function RunDetailPage() {
         )}
 
         {summary.length > 0 && (
-          <div className="panel">
-            <div className="panel-head">
-              <h2>Run performance</h2>
-              <span className="sub">
-                Computed once across every call in this run — read a wide p50→p99 spread alongside the row table
-                below to tell a rare slow outlier from a model that's just consistently slow
-              </span>
-            </div>
+          <CollapsiblePanel
+            id="run-detail-performance"
+            title="Run performance"
+            sub="Computed once across every call in this run — read a wide p50→p99 spread alongside the row table below to tell a rare slow outlier from a model that's just consistently slow"
+            defaultCollapsed
+          >
             <RunSummaryCharts summary={summary} />
-          </div>
+          </CollapsiblePanel>
+        )}
+
+        {summary.some((r) => r.judge_calls > 0) && (
+          <CollapsiblePanel
+            id="run-detail-judge-overhead"
+            title="Judge overhead"
+            sub="What LLM-as-judge grading itself cost and took — a separate, real call the numbers above don't include"
+            defaultCollapsed
+          >
+            <JudgeOverhead summary={summary} />
+          </CollapsiblePanel>
         )}
 
         <div className="panel">
@@ -387,6 +415,9 @@ export default function RunDetailPage() {
                 </select>
               )}
             </div>
+            <div style={{ padding: "0 18px 14px" }}>
+              <ConversationPrompt def={caseDefByKey.get(`${compareRows[0]?.pack}::${selectedCase}`)} />
+            </div>
             <div style={{ padding: "0 18px 18px", display: "flex", flexDirection: "column", gap: 14 }}>
               {compareRows.map((r) => (
                 <div key={r.model_alias}>
@@ -427,7 +458,7 @@ export default function RunDetailPage() {
           </button>
         }
       >
-        {detailRow && <CaseDetail row={detailRow} />}
+        {detailRow && <CaseDetail row={detailRow} def={caseDefByKey.get(`${detailRow.pack}::${detailRow.case_key}`)} />}
       </Drawer>
 
       <Drawer
@@ -482,11 +513,63 @@ export default function RunDetailPage() {
   );
 }
 
+// One row per model: how many of its cases actually invoked the judge, what
+// that grading cost/took, and what share of the model's own cost that
+// represents -- so it's legible whether judging is a rounding error or half
+// the bill. judge_cost_usd/avg_judge_latency_ms are only present once the
+// run has judged rows (bench/report.py) -- a model with none just shows "—".
+function JudgeOverhead({ summary }: { summary: RunSummaryRow[] }) {
+  const totalJudgeCost = summary.reduce((sum, r) => sum + (r.judge_cost_usd ?? 0), 0);
+  return (
+    <div className="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th className="num">Judge calls</th>
+            <th className="num">Judge cost</th>
+            <th className="num">Avg judge latency</th>
+            <th className="num">Judge share of cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          {summary.map((r) => {
+            const ownCost = (r.avg_cost_usd ?? 0) * r.calls;
+            const share = r.judge_cost_usd != null && ownCost + r.judge_cost_usd > 0
+              ? r.judge_cost_usd / (ownCost + r.judge_cost_usd)
+              : null;
+            return (
+              <tr key={r.model_alias}>
+                <td className="mono" style={{ fontWeight: 600 }}>
+                  {r.model_alias}
+                </td>
+                <td className="num">{r.judge_calls}</td>
+                <td className="num">{r.judge_cost_usd != null ? fmtMoney(r.judge_cost_usd) : "—"}</td>
+                <td className="num">{r.avg_judge_latency_ms != null ? `${Math.round(r.avg_judge_latency_ms)} ms` : "—"}</td>
+                <td className="num">{share != null ? `${(share * 100).toFixed(0)}%` : "—"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td style={{ fontWeight: 600 }}>Total</td>
+            <td className="num">{summary.reduce((sum, r) => sum + r.judge_calls, 0)}</td>
+            <td className="num" style={{ fontWeight: 600 }}>{fmtMoney(totalJudgeCost)}</td>
+            <td className="num">—</td>
+            <td className="num">—</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
 // The per-row deep dive -- everything the parquet schema captures for one
 // call that the flat table has no room for: tokens, cost, real served model
 // (an alias can silently point at a different version than requested),
 // judge scoring detail, and reliability signals like retries/rate-limiting.
-function CaseDetail({ row: r }: { row: RunCaseOut }) {
+function CaseDetail({ row: r, def }: { row: RunCaseOut; def?: CaseOut }) {
   const scores = parseScores(r.scores_json);
   const failedAssertions = r.failed_assertions ? r.failed_assertions.split(",").map((s) => s.trim()).filter(Boolean) : [];
   return (
@@ -506,6 +589,11 @@ function CaseDetail({ row: r }: { row: RunCaseOut }) {
           </span>
         )}
         {r.error_message && <p className="hint" style={{ marginTop: 6, color: "var(--critical)" }}>{r.error_message}</p>}
+      </div>
+
+      <div className="field">
+        <span className="section-label">Conversation</span>
+        <ConversationView def={def} response={r.response_text} />
       </div>
 
       <div className="field">
@@ -536,7 +624,13 @@ function CaseDetail({ row: r }: { row: RunCaseOut }) {
       {(scores.length > 0 || failedAssertions.length > 0 || r.judge_model) && (
         <div className="field">
           <span className="section-label">Grading detail</span>
-          {r.judge_model && <p className="hint" style={{ margin: "0 0 6px" }}>Judge: {r.judge_model}</p>}
+          {r.judge_model && (
+            <p className="hint" style={{ margin: "0 0 6px" }}>
+              Judge: {r.judge_model}
+              {r.judge_total_latency_ms != null && ` · ${Math.round(r.judge_total_latency_ms)} ms`}
+              {r.judge_cost_usd != null && ` · ${fmtMoney(r.judge_cost_usd)}`}
+            </p>
+          )}
           {scores.map(([name, value]) => (
             <p key={name} style={{ margin: "0 0 4px", fontSize: 13, display: "flex", gap: 8 }}>
               <span className="judgepill">{name}</span>
@@ -562,9 +656,57 @@ function CaseDetail({ row: r }: { row: RunCaseOut }) {
         </div>
       )}
 
-      <div className="field">
-        <span className="section-label">Response</span>
-        <div className="output-box">{r.response_text || <em style={{ color: "var(--muted)" }}>(empty response)</em>}</div>
+    </div>
+  );
+}
+
+// The turns actually sent for this case -- shared across every model in a
+// Compare view (same case, same prompt), so it's rendered once above the
+// per-model responses rather than repeated per row.
+function ConversationPrompt({ def }: { def?: CaseOut }) {
+  if (!def) {
+    return (
+      <p className="hint">
+        Original prompt unavailable — this test case may have been edited or removed since this run.
+      </p>
+    );
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {def.system && (
+        <div className="panel" style={{ padding: "10px 12px", boxShadow: "none" }}>
+          <div className="section-label" style={{ marginBottom: 4 }}>
+            system
+          </div>
+          <p style={{ margin: 0, fontSize: 13, whiteSpace: "pre-wrap", color: "var(--ink-2)" }}>{def.system}</p>
+        </div>
+      )}
+      {def.messages.map((m, i) => (
+        <div className="panel" key={i} style={{ padding: "10px 12px", boxShadow: "none" }}>
+          <div className="section-label" style={{ marginBottom: 4 }}>
+            {m.role}
+          </div>
+          <p style={{ margin: 0, fontSize: 13.5, whiteSpace: "pre-wrap" }}>{m.content}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// The full exchange for one specific call -- the case's turns (what was
+// sent) plus that model's own response, so the Details drawer reads as an
+// actual chat transcript instead of a bare response string.
+function ConversationView({ def, response }: { def?: CaseOut; response: string }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <ConversationPrompt def={def} />
+      <div className="panel" style={{ padding: "10px 12px", boxShadow: "none", borderColor: "var(--accent)" }}>
+        <div className="section-label" style={{ marginBottom: 4 }}>
+          assistant (response)
+        </div>
+        <p style={{ margin: 0, fontSize: 13.5, whiteSpace: "pre-wrap" }}>
+          {response || <em style={{ color: "var(--muted)" }}>(empty response)</em>}
+        </p>
       </div>
     </div>
   );

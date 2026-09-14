@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import StatTile from "../components/StatTile";
 import DriftTable from "../components/DriftTable";
 import TrendChart from "../components/TrendChart";
+import CollapsiblePanel from "../components/CollapsiblePanel";
 import { useDashboard, useRuns } from "../api/hooks";
 import { fmtDate, fmtMoney } from "../format";
 import type { ChartConfig } from "../api/types";
@@ -152,27 +153,24 @@ export default function DashboardPage() {
               />
             </div>
 
-            <div className="panel">
-              <div className="panel-head">
-                <h2>Drift vs. baseline</h2>
-                <span className="sub">
-                  Last run vs. median of the previous 4 — click a row to isolate that model in the trend chart below
-                </span>
-              </div>
+            <CollapsiblePanel
+              id="dashboard-drift"
+              title="Drift vs. baseline"
+              sub="Last run vs. median of the previous 4 — click a row to isolate that model in the trend chart below"
+              defaultCollapsed={data.alerts.length === 0}
+              style={{ marginBottom: 16 }}
+            >
               <div className="tablewrap">
                 <DriftTable alerts={data.alerts} onSelect={(model) => setHidden(new Set(aliases.filter((a) => a !== model)))} />
               </div>
-            </div>
+            </CollapsiblePanel>
 
-            <div className="panel">
-              <div className="panel-head">
-                <div>
-                  <h2>Trend explorer</h2>
-                  <span className="sub">
-                    {config?.sub} Click a model chip to hide/show its line, or × to drop it from the chart entirely.
-                  </span>
-                </div>
-              </div>
+            <CollapsiblePanel
+              id="dashboard-trend"
+              title="Trend explorer"
+              sub={`${config?.sub ?? ""} Click a model chip to hide/show its line, or × to drop it from the chart entirely.`}
+              style={{ marginBottom: 16 }}
+            >
               <div className="metrictabs">
                 {METRICS.map((m) => (
                   <button
@@ -237,16 +235,13 @@ export default function DashboardPage() {
                   Showing the top {aliases.length} models by call volume. Not charted: {data.meta.folded_models.join(", ")}.
                 </p>
               )}
-            </div>
+            </CollapsiblePanel>
 
-            <div className="panel">
-              <div className="panel-head">
-                <h2>Pass rate by pack — latest week</h2>
-                <span className="sub">
-                  Read by column: the model for a regulated workload wins grounding and hallucination, not the
-                  average — click any header to sort by that pack
-                </span>
-              </div>
+            <CollapsiblePanel
+              id="dashboard-heatmap"
+              title="Pass rate by pack — latest week"
+              sub="Read by column: the model for a regulated workload wins grounding and hallucination, not the average — click any header to sort by that pack"
+            >
               <div className="tablewrap">
                 <table>
                   <thead>
@@ -284,7 +279,7 @@ export default function DashboardPage() {
                   </tbody>
                 </table>
               </div>
-            </div>
+            </CollapsiblePanel>
           </>
         )}
       </div>

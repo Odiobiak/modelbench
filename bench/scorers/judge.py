@@ -106,6 +106,16 @@ class Judge:
         record.judge_model_version = jr.model_served or self.spec.canonical_id
         self.model_version = record.judge_model_version
 
+        # A real, measured, billable call -- capture it even if it fails
+        # below (jr.ok False), since a failed judge call still cost money
+        # and took time. See bench/schema.py for why this doesn't get
+        # folded into the case's own cost_total_usd/ttft_ms.
+        record.judge_cost_usd = jr.cost_total_usd
+        record.judge_ttft_ms = jr.ttft_ms
+        record.judge_total_latency_ms = jr.total_latency_ms
+        record.judge_prompt_tokens = jr.prompt_tokens
+        record.judge_completion_tokens = jr.completion_tokens
+
         if not jr.ok:
             record.judge_raw_json = json.dumps({"error": jr.error_type})
             return

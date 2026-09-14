@@ -135,6 +135,15 @@ class RunRecord:
     judge_model: str = ""
     judge_model_version: str = ""
     judge_raw_json: str = ""
+    # The judge call is a real, measured, billable call in its own right --
+    # captured here so it's neither invisible (no metadata anywhere) nor
+    # silently folded into the case's own cost_total_usd/ttft_ms (which
+    # describe the model UNDER TEST's call, not the judge's).
+    judge_cost_usd: float | None = None
+    judge_ttft_ms: float | None = None
+    judge_total_latency_ms: float | None = None
+    judge_prompt_tokens: int | None = None
+    judge_completion_tokens: int | None = None
     flagged_for_calibration: bool = False
 
     # ── RUNTIME ENVIRONMENT ───────────────────────────────────────────

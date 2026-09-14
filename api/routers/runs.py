@@ -238,6 +238,14 @@ async def get_run_cases(run_id: str, db: AsyncSession = Depends(get_db)):
             judge_model=r["judge_model"] or "",
             scores_json=r["scores_json"] or "{}",
             failed_assertions=r["failed_assertions"] or "",
+            # .get(), not r[...]: a run written before these columns existed
+            # has no such key at all in its parquet-derived dict, not just a
+            # null value.
+            judge_cost_usd=r.get("judge_cost_usd"),
+            judge_ttft_ms=r.get("judge_ttft_ms"),
+            judge_total_latency_ms=r.get("judge_total_latency_ms"),
+            judge_prompt_tokens=r.get("judge_prompt_tokens"),
+            judge_completion_tokens=r.get("judge_completion_tokens"),
         ))
     return out
 

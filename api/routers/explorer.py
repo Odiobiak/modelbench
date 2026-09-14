@@ -92,6 +92,8 @@ CASE_COLUMNS = [
     "cost_input_usd", "cost_cached_usd", "cost_output_usd", "cost_total_usd", "cost_source",
     "retry_count", "rate_limited", "error_message",
     "judge_model", "scores_json", "failed_assertions",
+    "judge_cost_usd", "judge_ttft_ms", "judge_total_latency_ms",
+    "judge_prompt_tokens", "judge_completion_tokens",
 ]
 
 

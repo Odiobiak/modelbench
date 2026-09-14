@@ -110,6 +110,40 @@ body {
   color: var(--ink);
   font: 400 14px/1.55 "IBM Plex Sans", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+  /* Backstop, not the fix: every scrollable table/grid below is already
+     supposed to contain its own overflow-x. This just guarantees that if
+     one doesn't (a missed minmax(0, 1fr), a long unbroken string), the
+     failure is invisible clipping on that one element instead of the
+     entire page gaining a horizontal scrollbar. */
+  overflow-x: hidden;
+}
+::selection {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+/* Thin, themed scrollbars -- the OS default bars read as chrome borrowed
+   from another app, especially against the dark surface. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  background-clip: padding-box;
+  border: 3px solid transparent;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+  background-clip: padding-box;
+  border: 3px solid transparent;
 }
 h1,
 h2,
@@ -147,8 +181,9 @@ button {
 .brand .mark {
   width: 22px;
   height: 22px;
-  border-radius: 5px;
-  background: var(--accent);
+  border-radius: 6px;
+  background: linear-gradient(140deg, var(--accent), var(--s7));
+  box-shadow: 0 2px 6px -1px color-mix(in srgb, var(--accent) 55%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -185,6 +220,7 @@ nav {
   padding-top: 2px;
 }
 .navitem {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -199,22 +235,40 @@ nav {
   background: none;
   text-align: left;
   width: 100%;
+  transition: background 0.14s ease, color 0.14s ease;
 }
 .navitem svg {
   width: 15px;
   height: 15px;
   flex: none;
   opacity: 0.8;
+  transition: opacity 0.14s ease, color 0.14s ease;
 }
 .navitem:hover {
   background: var(--surface-3);
+  color: var(--ink);
+}
+.navitem:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 .navitem.active {
-  background: var(--surface);
-  color: var(--ink);
-  border-color: var(--line);
-  box-shadow: var(--shadow);
+  background: var(--accent-wash);
+  color: var(--accent);
   font-weight: 600;
+}
+/* A left edge marker reads as "you are here" faster than a background
+   shift alone, and survives the accent-wash being low-contrast. */
+.navitem.active::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 17px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
 }
 .navitem.active svg {
   opacity: 1;
@@ -228,6 +282,10 @@ nav {
   background: var(--surface-3);
   padding: 1px 6px;
   border-radius: 20px;
+}
+.navitem.active .count {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
 }
 .sidefoot {
   margin-top: auto;
@@ -332,9 +390,13 @@ nav {
   color: var(--ink);
   cursor: pointer;
   white-space: nowrap;
+  transition: background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease, transform 0.08s ease;
 }
 .btn:hover {
   background: var(--surface-3);
+}
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
 }
 .btn:focus-visible {
   outline: 2px solid var(--accent);
@@ -344,9 +406,13 @@ nav {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-ink);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--accent) 30%, transparent),
+    0 6px 16px -8px color-mix(in srgb, var(--accent) 60%, transparent);
 }
 .btn.primary:hover {
   filter: brightness(1.06);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--accent) 35%, transparent),
+    0 8px 20px -8px color-mix(in srgb, var(--accent) 70%, transparent);
 }
 .btn.primary:disabled,
 .btn:disabled {
@@ -401,8 +467,33 @@ nav {
   color: var(--muted);
   margin-top: 2px;
 }
+/* CollapsiblePanel's whole head is the toggle -- say so on hover rather
+   than leaving a bare cursor:pointer as the only hint. */
+.collapsible-head {
+  cursor: pointer;
+  border-radius: 10px 10px 0 0;
+  transition: background 0.14s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.collapsible-head:hover {
+  background: var(--surface-2);
+}
+.collapsible-head:hover h2 svg {
+  color: var(--accent);
+}
+/* Collapsed, the head is the whole card -- a bottom rule with nothing
+   under it reads as a rendering bug. */
+.collapsible-head.collapsed {
+  border-bottom-color: transparent;
+  border-radius: 10px;
+}
 .tablewrap {
-  overflow-x: auto;
+  overflow: auto;
+  /* A long table scrolls inside its own card with the header pinned,
+     instead of pushing everything after it below the fold. Only engages
+     past ~72vh, so short tables are untouched. */
+  max-height: 72vh;
 }
 table {
   border-collapse: collapse;
@@ -418,9 +509,22 @@ th {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
-  border-bottom: 1px solid var(--line);
   white-space: nowrap;
   background: var(--surface-2);
+  /* Pinned to the top of .tablewrap while its rows scroll under. The
+     bottom rule is an inset shadow, not a border: border-collapse drops
+     a sticky cell's own borders in Chrome and Safari. */
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+th.sortable {
+  transition: color 0.14s ease, background 0.14s ease;
+}
+th.sortable:hover {
+  color: var(--ink);
+  background: var(--surface-3);
 }
 td {
   padding: 10px 14px;
@@ -436,6 +540,9 @@ td.num {
   text-align: right;
   font-family: "IBM Plex Mono";
   font-variant-numeric: tabular-nums;
+}
+tbody tr {
+  transition: background 0.1s ease;
 }
 tbody tr:hover {
   background: var(--surface-2);
@@ -555,7 +662,12 @@ tbody tr:hover {
 /* ── stat tiles ────────────────────────────────────────────────── */
 .tiles {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  /* minmax(0, 1fr), not bare 1fr -- a grid track's automatic minimum is its
+     content's min-content width, same trap as flexbox's implicit
+     min-width: auto. A single long, unbroken model alias in .tile .s
+     would otherwise stretch this row (and the whole page) instead of
+     truncating inside its own tile. */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 16px;
 }
@@ -565,6 +677,11 @@ tbody tr:hover {
   border-radius: 11px;
   padding: 15px 16px;
   box-shadow: var(--shadow);
+  min-width: 0;
+  transition: border-color 0.15s ease;
+}
+.tile:hover {
+  border-color: var(--line-strong);
 }
 .tile .k {
   font-family: "IBM Plex Mono";
@@ -573,6 +690,9 @@ tbody tr:hover {
   letter-spacing: 0.07em;
   color: var(--muted);
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tile .v {
   font-family: "IBM Plex Mono";
@@ -581,11 +701,23 @@ tbody tr:hover {
   letter-spacing: -0.01em;
   margin-top: 7px;
   font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tile .s {
   font-size: 11.5px;
   color: var(--ink-2);
   margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* An alarm tile should be findable in a row of five without reading any
+   of them -- the number turning red is easy to miss at a glance. */
+.tile.alarm {
+  border-color: color-mix(in srgb, var(--critical) 35%, var(--line));
+  background: linear-gradient(180deg, var(--critical-wash), var(--surface) 70%);
 }
 .tile.alarm .v {
   color: var(--critical);
@@ -860,7 +992,9 @@ details.adv[open] summary {
 /* ── launch page ───────────────────────────────────────────────── */
 .launch-grid {
   display: grid;
-  grid-template-columns: 1.3fr 0.9fr;
+  /* minmax(0, Nfr): see .cases-layout -- a bare Nfr track won't shrink
+     below its content's min-content width. */
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.9fr);
   gap: 16px;
   align-items: start;
 }
@@ -930,7 +1064,13 @@ details.adv[open] summary {
   background: var(--surface);
   cursor: pointer;
   color: var(--ink-2);
+  -webkit-user-select: none;
   user-select: none;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+.chip:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
 }
 .chip .sw {
   width: 9px;
@@ -957,6 +1097,11 @@ details.adv[open] summary {
   background: none;
   color: var(--muted);
   cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+.metrictab:hover {
+  color: var(--ink);
+  background: var(--surface-2);
 }
 .metrictab.active {
   background: var(--surface-2);
@@ -1052,9 +1197,11 @@ details.adv[open] summary {
   background: none;
   color: var(--ink-2);
   cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
 }
 .pack-list-item:hover {
   background: var(--surface-2);
+  color: var(--ink);
 }
 .pack-list-item .n {
   font-family: "IBM Plex Mono";
@@ -1245,7 +1392,7 @@ details.adv[open] summary {
 
 @media (max-width: 980px) {
   .tiles {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .launch-grid {
     grid-template-columns: 1fr;

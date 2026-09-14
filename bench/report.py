@@ -71,6 +71,17 @@ def summarize(df: pd.DataFrame, percentiles=(50, 90, 95, 99)) -> pd.DataFrame:
         # The number that actually decides things.
         row["cost_per_success"] = round(total_cost / n_pass, 8) if n_pass else None
 
+        # Judge overhead -- a real, billable call the scorecard's own cost
+        # columns above never see (see bench/schema.py's judge_cost_usd).
+        # judge_cost_usd/judge_total_latency_ms are newer columns -- a run
+        # written before this existed has no such column at all (not just
+        # nulls), so a plain g["..."] would KeyError on old parquet files.
+        judge_cost = g["judge_cost_usd"].dropna() if "judge_cost_usd" in g.columns else pd.Series(dtype=float)
+        row["judge_calls"] = int(g["judge_model"].fillna("").astype(bool).sum())
+        row["judge_cost_usd"] = round(float(judge_cost.sum()), 6) if len(judge_cost) else None
+        judge_lat = g["judge_total_latency_ms"].dropna() if "judge_total_latency_ms" in g.columns else pd.Series(dtype=float)
+        row["avg_judge_latency_ms"] = round(float(judge_lat.mean()), 1) if len(judge_lat) else None
+
         # Per-pack pass rates become the scorecard columns.
         for pack, pg in g.groupby("suite_pack"):
             label = pack.split("_", 1)[-1]

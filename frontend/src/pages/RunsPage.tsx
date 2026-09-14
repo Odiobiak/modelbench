@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useCancelRun, useRuns } from "../api/hooks";
+import { useCancelRun, useLaunchRun, useRuns } from "../api/hooks";
 import { fmtDate, fmtMoney } from "../format";
+import { toast } from "../toast";
+import { ApiError } from "../api/client";
 import type { RunOut } from "../api/types";
 
 type SortKey = "created_at" | "calls_done" | "spend_usd";
@@ -11,12 +13,38 @@ export default function RunsPage() {
   const navigate = useNavigate();
   const { data: runs, isLoading } = useRuns();
   const cancelRun = useCancelRun();
+  const launchRun = useLaunchRun();
 
   const [status, setStatus] = useState<(typeof STATUSES)[number]>("all");
   const [modelFilter, setModelFilter] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("created_at");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [rerunningId, setRerunningId] = useState<string | null>(null);
+
+  // Re-launches a run with the exact same model_ids/pack_names/case_keys/
+  // repeats/mock it was originally given -- same shape RunLauncherPanel
+  // already posts, just sourced from the past run instead of fresh UI state.
+  async function rerun(r: RunOut) {
+    const scope = r.case_keys?.length ? `${r.case_keys.length} case(s) in ${r.pack_names.join(", ")}` : r.pack_names.join(", ");
+    if (!confirm(`Rerun this run?\n\n${r.model_ids.length} model(s) on ${scope}${r.mock ? " (mock)" : ""}.`)) return;
+    setRerunningId(r.run_id);
+    try {
+      const next = await launchRun.mutateAsync({
+        model_ids: r.model_ids,
+        pack_names: r.pack_names,
+        case_keys: r.case_keys,
+        repeats: r.repeats,
+        mock: r.mock,
+      });
+      toast(`Relaunched as ${next.run_id}`);
+      navigate(`/runs/${next.run_id}`);
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Failed to rerun");
+    } finally {
+      setRerunningId(null);
+    }
+  }
 
   function toggleSelected(runId: string) {
     const next = new Set(selected);
@@ -179,6 +207,14 @@ export default function RunsPage() {
                       {(r.status === "pending" || r.status === "running") && (
                         <button className="btn sm ghost" onClick={() => cancelRun.mutate(r.run_id)}>
                           Cancel
+                        </button>
+                      )}
+                      {(r.status === "completed" || r.status === "failed" || r.status === "cancelled") && (
+                        <button className="btn sm ghost" onClick={() => rerun(r)} disabled={rerunningId === r.run_id}>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                            <path d="M21 12a9 9 0 11-3-6.7M21 3v6h-6" />
+                          </svg>
+                          {rerunningId === r.run_id ? "Rerunning…" : "Rerun"}
                         </button>
                       )}
                     </td>

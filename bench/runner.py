@@ -162,7 +162,10 @@ class Runner:
 
     async def _account(self, rec: RunRecord) -> None:
         async with self._spend_lock:
-            self.spend += rec.cost_total_usd or 0.0
+            # The judge's own call is real spend too -- omitting it here
+            # meant the ceiling (and the run's reported spend_usd) silently
+            # undercounted every judged pack.
+            self.spend += (rec.cost_total_usd or 0.0) + (rec.judge_cost_usd or 0.0)
             if self.spend > self.max_spend and not self._aborted:
                 self._aborted = True
                 print(f"\n  !! SPEND CEILING HIT: ${self.spend:.4f} > "

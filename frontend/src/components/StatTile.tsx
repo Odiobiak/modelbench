@@ -14,8 +14,12 @@ export default function StatTile({
   return (
     <div className={`tile${alarm ? " alarm" : ""}`} title={hint}>
       <div className="k">{label}</div>
-      <div className="v">{value}</div>
-      <div className="s">{sub}</div>
+      <div className="v" title={value}>
+        {value}
+      </div>
+      <div className="s" title={sub}>
+        {sub}
+      </div>
     </div>
   );
 }

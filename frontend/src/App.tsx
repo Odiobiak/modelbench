@@ -61,25 +61,15 @@ export default function App() {
           </span>
         </div>
         <nav>
-          <span className="navlabel">Bench</span>
+          {/* Ordered by the actual workflow -- launch a run, manage what it
+              runs, read what came back -- rather than by data model. */}
+          <span className="navlabel">Run</span>
           <NavItem
-            to="/models"
-            count={models?.length}
-            label="Models"
+            to="/launch"
+            label="Launch run"
             icon={
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <rect x="3" y="4" width="18" height="16" rx="2" />
-                <path d="M3 9h18M9 9v11" />
-              </svg>
-            }
-          />
-          <NavItem
-            to="/guide"
-            label="Model guide"
-            icon={
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
+                <path d="M5 3l16 9-16 9V3z" />
               </svg>
             }
           />
@@ -91,15 +81,6 @@ export default function App() {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path d="M9 3h6l1 4H8l1-4zM6 7h12l1 13a1 1 0 01-1 1H6a1 1 0 01-1-1L6 7z" />
                 <path d="M9 12h6M9 16h4" />
-              </svg>
-            }
-          />
-          <NavItem
-            to="/launch"
-            label="Launch run"
-            icon={
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M5 3l16 9-16 9V3z" />
               </svg>
             }
           />
@@ -135,6 +116,27 @@ export default function App() {
             }
           />
           <span className="navlabel">Config</span>
+          <NavItem
+            to="/models"
+            count={models?.length}
+            label="Models"
+            icon={
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                <path d="M3 9h18M9 9v11" />
+              </svg>
+            }
+          />
+          <NavItem
+            to="/guide"
+            label="Model guide"
+            icon={
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
+              </svg>
+            }
+          />
           <NavItem
             to="/settings"
             label="Settings"
